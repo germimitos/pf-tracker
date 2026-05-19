@@ -71,10 +71,18 @@ function validateHist(h) {
 
 const hasError = (e) => Object.values(e).some(Boolean);
 
-function applyQuote(pos, { nom, prixActuel }) {
+function applyQuote(pos, { nom, prixActuel, secteur }) {
   const nb = parseFloat(pos.nbActions) || 0;
   const pa = parseFloat(pos.prixAchat) || 0;
-  return { ...pos, nom, prixActuel, valeurActuelle: nb * prixActuel, prixRevient: nb * pa };
+  return {
+    ...pos,
+    nom,
+    prixActuel,
+    // Ne pas écraser un secteur déjà saisi manuellement
+    secteur: pos.secteur || secteur || "",
+    valeurActuelle: nb * prixActuel,
+    prixRevient:    nb * pa,
+  };
 }
 
 function derivedVal(row) {
@@ -122,8 +130,13 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
     setNewTickerErr(false);
     setNewTickerMsg("");
     try {
-      const { nom, prixActuel } = await fetchQuote(ticker);
-      setNewLine(prev => ({ ...prev, nom, prixActuel: String(prixActuel) }));
+      const { nom, prixActuel, secteur } = await fetchQuote(ticker);
+      setNewLine(prev => ({
+        ...prev,
+        nom,
+        prixActuel: String(prixActuel),
+        secteur:    prev.secteur || secteur || "",
+      }));
     } catch (e) {
       setNewTickerErr(true);
       setNewTickerMsg(e.message || "Erreur réseau");
