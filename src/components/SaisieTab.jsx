@@ -325,7 +325,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
   );
 }
 
-export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset }) {
+export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory }) {
   const C = useTheme();
   const thStyle = {
     color: C.muted, textAlign: "left", padding: "6px 8px",
@@ -510,25 +510,14 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
         </table>
       </div>
 
-      <div style={{ marginTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={handleExport} style={outlineBtn(C.accent)}>
-            Exporter JSON
-          </button>
-          <button onClick={() => importRef.current?.click()} style={outlineBtn(C.muted)}>
-            Importer JSON
-          </button>
-          <input ref={importRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
-        </div>
-        <button
-          onClick={onReset}
-          style={{
-            background: "none", border: `1px solid ${C.border}`, borderRadius: 8,
-            color: C.muted, padding: "8px 18px", cursor: "pointer", fontSize: 12, fontFamily: "monospace",
-          }}
-        >
-          Réinitialiser avec données démo
+      <div style={{ marginTop: 24, display: "flex", gap: 8, flexWrap: "wrap" }}>
+        <button onClick={handleExport} style={outlineBtn(C.accent)}>
+          Exporter JSON
         </button>
+        <button onClick={() => importRef.current?.click()} style={outlineBtn(C.muted)}>
+          Importer JSON
+        </button>
+        <input ref={importRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
       </div>
     </div>
   );
