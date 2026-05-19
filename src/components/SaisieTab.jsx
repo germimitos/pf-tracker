@@ -2,9 +2,9 @@ import { useState, useRef } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { fetchQuote } from "../stockApi";
 import { fmt, pct, perf } from "../utils";
-import { ACCOUNTS } from "../constants";
+import { ACCOUNTS, TX_TYPES } from "../constants";
 
-/* ── styles helpers ─────────────────────────────────────────── */
+/* ── helpers de style ───────────────────────────────────────── */
 const inputStyle = (error, C) => ({
   background:   C.card,
   border:       `1px solid ${error ? C.moins : C.border}`,
@@ -50,56 +50,59 @@ const outlineBtn = (color, disabled) => ({
   opacity:      disabled ? 0.5 : 1,
 });
 
-/* ── constantes ─────────────────────────────────────────────── */
-const EMPTY_POS = { ticker: "", nom: "", secteur: "", nbActions: "", prixAchat: "", prixActuel: "" };
+/* ── valeur par défaut d'une transaction ────────────────────── */
+const emptyTx = () => ({
+  ticker:          "",
+  nom:             "",
+  secteur:         "",
+  type:            TX_TYPES.ACHAT,
+  date:            new Date().toISOString().slice(0, 10),
+  nbActions:       "",
+  prixUnitaire:    "",
+  devise:          "EUR",
+  prixUnitaireEUR: "",
+});
 
-function validatePos(f) {
+function validateTx(f) {
   const num = (v) => v === "" || isNaN(parseFloat(v));
   return {
-    nom:       !f.nom?.trim(),
-    nbActions: num(f.nbActions) || parseFloat(f.nbActions) <= 0,
-    prixAchat: num(f.prixAchat) || parseFloat(f.prixAchat) < 0,
+    nom:          !f.nom?.trim(),
+    nbActions:    num(f.nbActions) || parseFloat(f.nbActions) <= 0,
+    prixUnitaire: num(f.prixUnitaire) || parseFloat(f.prixUnitaire) < 0,
   };
 }
 
 const hasError = (e) => Object.values(e).some(Boolean);
 
-function toPosition(f) {
-  const nb = parseFloat(f.nbActions)  || 0;
-  const pa = parseFloat(f.prixAchat)  || 0;
-  const pc = parseFloat(f.prixActuel) || 0;
+function toTransaction(f, existingId) {
+  const nb  = parseFloat(f.nbActions)       || 0;
+  const pu  = parseFloat(f.prixUnitaire)    || 0;
+  const eur = parseFloat(f.prixUnitaireEUR) || pu;
   return {
-    ticker:         f.ticker?.trim().toUpperCase() || "",
-    nom:            f.nom?.trim()     || "",
-    secteur:        f.secteur?.trim() || "",
-    nbActions:      nb,
-    prixAchat:      pa,
-    prixActuel:     pc,
-    valeurActuelle: nb * pc,
-    prixRevient:    nb * pa,
-  };
-}
-
-function applyQuote(pos, { nom, prixActuel, secteur }) {
-  const nb = parseFloat(pos.nbActions) || 0;
-  const pa = parseFloat(pos.prixAchat) || 0;
-  return {
-    ...pos,
-    nom,
-    prixActuel,
-    secteur:        pos.secteur || secteur || "",
-    valeurActuelle: nb * prixActuel,
-    prixRevient:    nb * pa,
+    id:              existingId ?? crypto.randomUUID(),
+    date:            f.date || new Date().toISOString().slice(0, 10),
+    type:            f.type || TX_TYPES.ACHAT,
+    ticker:          f.ticker?.trim().toUpperCase() || "",
+    nom:             f.nom?.trim()     || "",
+    secteur:         f.secteur?.trim() || "",
+    nbActions:       nb,
+    prixUnitaire:    pu,
+    devise:          f.devise || "EUR",
+    prixUnitaireEUR: eur,
   };
 }
 
 /* ── Formulaire de saisie (ajouter ou modifier) ─────────────── */
-function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCancel, errors, setErrors }) {
+function AddForm({
+  title, color, form, setForm,
+  editId, onAdd, onUpdate, onCancel,
+  errors, setErrors, priceCache, setPriceCache,
+}) {
   const C = useTheme();
   const [loading,   setLoading]   = useState(false);
   const [tickerErr, setTickerErr] = useState(false);
   const [tickerMsg, setTickerMsg] = useState("");
-  const isEditing = editIdx !== null;
+  const isEditing = editId !== null;
 
   const lookup = async () => {
     const ticker = form.ticker?.trim();
@@ -108,12 +111,18 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
     setTickerErr(false);
     setTickerMsg("");
     try {
-      const { nom, prixActuel, secteur } = await fetchQuote(ticker);
+      const { nom, prixActuel, prixActuelEUR, devise, secteur } = await fetchQuote(ticker);
       setForm((prev) => ({
         ...prev,
         nom,
-        prixActuel: String(prixActuel),
-        secteur:    prev.secteur || secteur || "",
+        prixUnitaire:    String(prixActuel),
+        prixUnitaireEUR: String(prixActuelEUR ?? prixActuel),
+        devise:          devise || "EUR",
+        secteur:         prev.secteur || secteur || "",
+      }));
+      setPriceCache((prev) => ({
+        ...prev,
+        [ticker.toUpperCase()]: { prixActuelEUR: prixActuelEUR ?? prixActuel, devise: devise || "EUR", updatedAt: Date.now() },
       }));
     } catch (e) {
       setTickerErr(true);
@@ -123,23 +132,10 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
     }
   };
 
-  const previewVal = (parseFloat(form.nbActions) || 0) * (parseFloat(form.prixActuel) || 0);
-
-  const field = (key, lbl, type, placeholder, errorKey) => (
-    <div>
-      <span style={label(C)}>{lbl}</span>
-      <input
-        value={form[key] ?? ""}
-        type={type}
-        placeholder={placeholder}
-        onChange={(e) => {
-          setForm({ ...form, [key]: type === "text" ? e.target.value : e.target.value });
-          if (errorKey && errors[errorKey]) setErrors({ ...errors, [errorKey]: false });
-        }}
-        style={{ ...inputStyle(errorKey ? !!errors[errorKey] : false, C) }}
-      />
-    </div>
-  );
+  const isVente    = form.type === TX_TYPES.VENTE;
+  const showEurHint = form.devise && form.devise !== "EUR" && form.prixUnitaireEUR;
+  const eur        = parseFloat(form.prixUnitaireEUR) || 0;
+  const previewVal = (parseFloat(form.nbActions) || 0) * eur;
 
   return (
     <div style={{
@@ -149,7 +145,7 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
       padding:      20,
       marginBottom: 20,
     }}>
-      {/* Titre */}
+      {/* Titre + badge édition */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
         <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>{title}</span>
@@ -158,15 +154,39 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
             fontSize: 11, fontFamily: "monospace",
             background: `${color}22`, color, border: `1px solid ${color}44`,
             borderRadius: 4, padding: "2px 8px",
-          }}>
-            ✏ Modification en cours
-          </span>
+          }}>✏ Modification en cours</span>
         )}
       </div>
 
-      {/* Champs */}
+      {/* Toggle ACHAT / VENTE */}
+      <div style={{ display: "flex", gap: 8, marginBottom: 14 }}>
+        {[TX_TYPES.ACHAT, TX_TYPES.VENTE].map((t) => {
+          const active = form.type === t;
+          const tColor = t === TX_TYPES.ACHAT ? C.plus : C.moins;
+          return (
+            <button
+              key={t}
+              onClick={() => setForm((prev) => ({ ...prev, type: t }))}
+              style={{
+                background:   active ? tColor : "none",
+                border:       `1px solid ${tColor}`,
+                borderRadius: 8,
+                color:        active ? "#0a0f1e" : tColor,
+                padding:      "6px 20px",
+                fontWeight:   700,
+                cursor:       "pointer",
+                fontSize:     12,
+                letterSpacing: 1,
+              }}
+            >{t}</button>
+          );
+        })}
+      </div>
+
+      {/* Grille de champs */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
-        {/* Ticker avec bouton lookup */}
+
+        {/* Ticker */}
         <div>
           <span style={label(C)}>Ticker</span>
           <div style={{ display: "flex", gap: 4 }}>
@@ -221,27 +241,76 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
           />
         </div>
 
-        {field("secteur",   "Secteur",        "text",   "—",      null)}
-        {field("nbActions", "Nb actions",      "number", "10",     "nbActions")}
-        {field("prixAchat", "Prix achat (€)",  "number", "150.00", "prixAchat")}
-
-        {/* Prix actuel */}
+        {/* Secteur */}
         <div>
-          <span style={label(C)}>Prix actuel (€)</span>
+          <span style={label(C)}>Secteur</span>
           <input
-            value={form.prixActuel ?? ""}
-            type="number"
-            placeholder="Auto"
-            onChange={(e) => setForm({ ...form, prixActuel: e.target.value })}
+            value={form.secteur ?? ""}
+            type="text"
+            placeholder="—"
+            onChange={(e) => setForm({ ...form, secteur: e.target.value })}
             style={inputStyle(false, C)}
           />
         </div>
+
+        {/* Date */}
+        <div>
+          <span style={label(C)}>Date</span>
+          <input
+            value={form.date ?? ""}
+            type="date"
+            onChange={(e) => setForm({ ...form, date: e.target.value })}
+            style={inputStyle(false, C)}
+          />
+        </div>
+
+        {/* Nb actions */}
+        <div>
+          <span style={label(C)}>Nb actions</span>
+          <input
+            value={form.nbActions ?? ""}
+            type="number"
+            placeholder="10"
+            onChange={(e) => {
+              setForm({ ...form, nbActions: e.target.value });
+              if (errors.nbActions) setErrors({ ...errors, nbActions: false });
+            }}
+            style={inputStyle(!!errors.nbActions, C)}
+          />
+        </div>
+
+        {/* Prix unitaire */}
+        <div>
+          <span style={label(C)}>{isVente ? "Prix de vente" : "Prix d'achat"}</span>
+          <input
+            value={form.prixUnitaire ?? ""}
+            type="number"
+            placeholder="150.00"
+            onChange={(e) => {
+              const raw = e.target.value;
+              setForm((prev) => ({
+                ...prev,
+                prixUnitaire: raw,
+                // Si même devise EUR, synchroniser EUR
+                prixUnitaireEUR: prev.devise === "EUR" ? raw : prev.prixUnitaireEUR,
+              }));
+              if (errors.prixUnitaire) setErrors({ ...errors, prixUnitaire: false });
+            }}
+            style={inputStyle(!!errors.prixUnitaire, C)}
+          />
+          {showEurHint && (
+            <span style={{ color: C.muted, fontSize: 10, fontFamily: "monospace", marginTop: 2, display: "block" }}>
+              ≈ {eur.toFixed(2)} € ({form.devise})
+            </span>
+          )}
+        </div>
+
       </div>
 
       {/* Bas du formulaire */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 12, fontFamily: "monospace", color: C.muted }}>
-          Valeur estimée :{" "}
+          {isVente ? "Valeur cédée" : "Investissement"} :{" "}
           <span style={{ color: previewVal > 0 ? C.text : C.muted, fontWeight: 600 }}>
             {previewVal > 0 ? fmt(previewVal) : "—"}
           </span>
@@ -252,9 +321,9 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
           )}
           <button
             onClick={isEditing ? onUpdate : onAdd}
-            style={btnStyle(color)}
+            style={btnStyle(isVente ? C.moins : color)}
           >
-            {isEditing ? "✓ Mettre à jour" : "+ Ajouter"}
+            {isEditing ? "✓ Mettre à jour" : `+ ${isVente ? "Vente" : "Achat"}`}
           </button>
         </div>
       </div>
@@ -262,36 +331,42 @@ function AddForm({ title, color, form, setForm, editIdx, onAdd, onUpdate, onCanc
   );
 }
 
-/* ── Historique des positions ────────────────────────────────── */
-function PositionHistory({ pea, ct, editPeaIdx, editCtIdx, onEditPea, onEditCt, onDeletePea, onDeleteCt, setPea, setCt }) {
+/* ── Journal de transactions ─────────────────────────────────── */
+function TransactionLog({
+  peaTx, ctTx,
+  editPeaId, editCtId,
+  onEditPea, onEditCt,
+  onDeletePea, onDeleteCt,
+  setPeaTx, setCtTx,
+  priceCache, setPriceCache,
+}) {
   const C = useTheme();
-  const [loadingRows, setLoadingRows] = useState(new Map());
+  const [loadingIds,    setLoadingIds]    = useState(new Set());
+  const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
-  const setRowLoading = (key, v) =>
-    setLoadingRows((prev) => { const m = new Map(prev); v ? m.set(key, true) : m.delete(key); return m; });
+  const setRowLoading = (id, v) =>
+    setLoadingIds((prev) => { const s = new Set(prev); v ? s.add(id) : s.delete(id); return s; });
 
-  const refresh = async (compte, i, pos) => {
-    const ticker = pos.ticker?.trim();
+  const refresh = async (tx) => {
+    const ticker = tx.ticker?.trim();
     if (!ticker) return;
-    const key = `${compte}-${i}`;
-    setRowLoading(key, true);
+    setRowLoading(tx.id, true);
     try {
-      const quote = await fetchQuote(ticker);
-      if (compte === ACCOUNTS.PEA) {
-        setPea((prev) => { const u = [...prev]; u[i] = applyQuote(u[i], quote); return u; });
-      } else {
-        setCt((prev) => { const u = [...prev]; u[i] = applyQuote(u[i], quote); return u; });
-      }
+      const { prixActuelEUR, devise } = await fetchQuote(ticker);
+      setPriceCache((prev) => ({
+        ...prev,
+        [ticker.toUpperCase()]: { prixActuelEUR: prixActuelEUR ?? 0, devise: devise || "EUR", updatedAt: Date.now() },
+      }));
     } catch {}
-    setRowLoading(key, false);
+    setRowLoading(tx.id, false);
   };
 
-  const allPos = [
-    ...pea.map((pos, i) => ({ pos, i, compte: ACCOUNTS.PEA })),
-    ...ct.map((pos, i)  => ({ pos, i, compte: ACCOUNTS.CT  })),
-  ];
+  const allTx = [
+    ...peaTx.map((tx) => ({ tx, compte: ACCOUNTS.PEA })),
+    ...ctTx.map((tx)  => ({ tx, compte: ACCOUNTS.CT  })),
+  ].sort((a, b) => b.tx.date.localeCompare(a.tx.date));
 
-  if (allPos.length === 0) return null;
+  if (allTx.length === 0) return null;
 
   const thStyle = {
     color:         C.muted,
@@ -310,10 +385,10 @@ function PositionHistory({ pea, ct, editPeaIdx, editCtIdx, onEditPea, onEditCt, 
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent }} />
         <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>
-          HISTORIQUE DES POSITIONS
+          JOURNAL DES TRANSACTIONS
         </span>
         <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>
-          {allPos.length} position{allPos.length > 1 ? "s" : ""}
+          {allTx.length} opération{allTx.length > 1 ? "s" : ""}
         </span>
       </div>
 
@@ -321,39 +396,82 @@ function PositionHistory({ pea, ct, editPeaIdx, editCtIdx, onEditPea, onEditCt, 
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr>
+              <th style={thStyle}>Date</th>
+              <th style={thStyle}>Type</th>
               <th style={thStyle}>Actif</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Qté</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Prix unit.</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Devise</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Prix EUR</th>
               <th style={thStyle}>Compte</th>
-              <th style={thStyle}>Secteur</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Valeur</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Investi</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>P&L</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>%</th>
               <th style={{ ...thStyle, textAlign: "center" }} />
             </tr>
           </thead>
           <tbody>
-            {allPos.map(({ pos, i, compte }) => {
-              const val    = parseFloat(pos.valeurActuelle) || 0;
-              const rev    = parseFloat(pos.prixRevient)    || 0;
-              const pl     = val - rev;
-              const pp     = rev > 0 ? perf(val, rev) : 0;
-              const key    = `${compte}-${i}`;
-              const isEdit = (compte === ACCOUNTS.PEA && editPeaIdx === i) ||
-                             (compte === ACCOUNTS.CT  && editCtIdx  === i);
-              const loading = loadingRows.has(key);
+            {allTx.map(({ tx, compte }) => {
+              const isEdit     = (compte === ACCOUNTS.PEA && editPeaId === tx.id) ||
+                                 (compte === ACCOUNTS.CT  && editCtId  === tx.id);
+              const isLoading  = loadingIds.has(tx.id);
+              const isVente    = tx.type === TX_TYPES.VENTE;
+              const typeColor  = isVente ? "#f87171" : "#4ade80";
+              const confirming = confirmDeleteId === tx.id;
+              const cached     = priceCache?.[tx.ticker?.toUpperCase()];
+              const prixActuel = cached?.prixActuelEUR;
 
               return (
                 <tr
-                  key={key}
+                  key={tx.id}
                   style={{
                     borderBottom: `1px solid ${C.border}`,
                     background:   isEdit ? `${compte === ACCOUNTS.PEA ? "#4ade8011" : "#60a5fa11"}` : "transparent",
                   }}
                 >
-                  <td style={{ padding: "10px 10px" }}>
-                    <div style={{ fontWeight: 600, color: C.text }}>{pos.nom || pos.ticker}</div>
-                    {pos.ticker && <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{pos.ticker}</div>}
+                  {/* Date */}
+                  <td style={{ padding: "10px 10px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>
+                    {tx.date}
                   </td>
+
+                  {/* Type badge */}
+                  <td style={{ padding: "10px 10px" }}>
+                    <span style={{
+                      background:   isVente ? "#3f1f1f" : "#14532d",
+                      color:        typeColor,
+                      borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
+                    }}>{tx.type}</span>
+                  </td>
+
+                  {/* Actif */}
+                  <td style={{ padding: "10px 10px" }}>
+                    <div style={{ fontWeight: 600, color: C.text }}>{tx.nom || tx.ticker}</div>
+                    {tx.ticker && <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{tx.ticker}</div>}
+                  </td>
+
+                  {/* Quantité */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>
+                    {tx.nbActions}
+                  </td>
+
+                  {/* Prix unitaire (devise native) */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
+                    {parseFloat(tx.prixUnitaire)?.toFixed(2)}
+                  </td>
+
+                  {/* Devise */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted, fontSize: 11 }}>
+                    {tx.devise || "EUR"}
+                  </td>
+
+                  {/* Prix EUR */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>
+                    {fmt(parseFloat(tx.prixUnitaireEUR) || parseFloat(tx.prixUnitaire) || 0)}
+                    {prixActuel != null && (
+                      <div style={{ fontSize: 10, color: C.muted }}>
+                        actuel: {fmt(prixActuel)}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Compte */}
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{
                       background:   compte === ACCOUNTS.PEA ? "#14532d" : "#1e3a5f",
@@ -361,31 +479,45 @@ function PositionHistory({ pea, ct, editPeaIdx, editCtIdx, onEditPea, onEditCt, 
                       borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
                     }}>{compte}</span>
                   </td>
-                  <td style={{ padding: "10px 10px", color: C.muted, fontSize: 12 }}>{pos.secteur || "—"}</td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>{fmt(val)}</td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>{fmt(rev)}</td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: pl >= 0 ? "#4ade80" : "#f87171" }}>{fmt(pl)}</td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: pp >= 0 ? "#4ade80" : "#f87171" }}>{pct(pp)}</td>
+
+                  {/* Actions */}
                   <td style={{ padding: "10px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
-                    {/* Rafraîchir */}
-                    <button
-                      onClick={() => refresh(compte, i, pos)}
-                      disabled={loading || !pos.ticker?.trim()}
-                      title="Rafraîchir le prix"
-                      style={{ background: "none", border: "none", color: loading ? C.muted : C.accent, cursor: pos.ticker?.trim() && !loading ? "pointer" : "default", fontSize: 15, marginRight: 4 }}
-                    >{loading ? "…" : "↻"}</button>
-                    {/* Modifier */}
-                    <button
-                      onClick={() => compte === ACCOUNTS.PEA ? onEditPea(i) : onEditCt(i)}
-                      title="Modifier"
-                      style={{ background: "none", border: "none", color: isEdit ? C.accent : C.muted, cursor: "pointer", fontSize: 14, marginRight: 4 }}
-                    >✏</button>
-                    {/* Supprimer */}
-                    <button
-                      onClick={() => compte === ACCOUNTS.PEA ? onDeletePea(i) : onDeleteCt(i)}
-                      title="Supprimer"
-                      style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}
-                    >✕</button>
+                    {confirming ? (
+                      <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+                        <span style={{ fontSize: 11, color: C.moins, fontFamily: "monospace" }}>Supprimer ?</span>
+                        <button
+                          onClick={() => setConfirmDeleteId(null)}
+                          style={{ ...outlineBtn(C.muted), padding: "4px 10px", fontSize: 11 }}
+                        >Annuler</button>
+                        <button
+                          onClick={() => {
+                            if (compte === ACCOUNTS.PEA) onDeletePea(tx.id);
+                            else                          onDeleteCt(tx.id);
+                            setConfirmDeleteId(null);
+                          }}
+                          style={{ ...btnStyle(C.moins), padding: "4px 10px", fontSize: 11 }}
+                        >Supprimer</button>
+                      </span>
+                    ) : (
+                      <>
+                        <button
+                          onClick={() => refresh(tx)}
+                          disabled={isLoading || !tx.ticker?.trim()}
+                          title="Rafraîchir le prix"
+                          style={{ background: "none", border: "none", color: isLoading ? C.muted : C.accent, cursor: tx.ticker?.trim() && !isLoading ? "pointer" : "default", fontSize: 15, marginRight: 4 }}
+                        >{isLoading ? "…" : "↻"}</button>
+                        <button
+                          onClick={() => compte === ACCOUNTS.PEA ? onEditPea(tx.id) : onEditCt(tx.id)}
+                          title="Modifier"
+                          style={{ background: "none", border: "none", color: isEdit ? C.accent : C.muted, cursor: "pointer", fontSize: 14, marginRight: 4 }}
+                        >✏</button>
+                        <button
+                          onClick={() => setConfirmDeleteId(tx.id)}
+                          title="Supprimer"
+                          style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}
+                        >✕</button>
+                      </>
+                    )}
                   </td>
                 </tr>
               );
@@ -398,107 +530,116 @@ function PositionHistory({ pea, ct, editPeaIdx, editCtIdx, onEditPea, onEditCt, 
 }
 
 /* ── SaisieTab principal ─────────────────────────────────────── */
-export function SaisieTab({ pea, ct, setPea, setCt }) {
+export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPriceCache }) {
   const C = useTheme();
   const importRef = useRef(null);
 
-  const [formPea,    setFormPea]    = useState(EMPTY_POS);
-  const [formCt,     setFormCt]     = useState(EMPTY_POS);
-  const [editPeaIdx, setEditPeaIdx] = useState(null);
-  const [editCtIdx,  setEditCtIdx]  = useState(null);
-  const [peaErrors,  setPeaErrors]  = useState({});
-  const [ctErrors,   setCtErrors]   = useState({});
+  const [formPea,   setFormPea]   = useState(emptyTx);
+  const [formCt,    setFormCt]    = useState(emptyTx);
+  const [editPeaId, setEditPeaId] = useState(null);
+  const [editCtId,  setEditCtId]  = useState(null);
+  const [peaErrors, setPeaErrors] = useState({});
+  const [ctErrors,  setCtErrors]  = useState({});
   const [refreshing, setRefreshing] = useState(false);
 
-  /* ── PEA actions ── */
+  /* ── PEA ── */
   const addPea = () => {
-    const errs = validatePos(formPea);
+    const errs = validateTx(formPea);
     if (hasError(errs)) { setPeaErrors(errs); return; }
-    setPea([...pea, toPosition(formPea)]);
-    setFormPea(EMPTY_POS);
+    setPeaTx([...peaTx, toTransaction(formPea)]);
+    setFormPea(emptyTx());
     setPeaErrors({});
   };
 
-  const startEditPea = (i) => {
-    setFormPea({ ...pea[i], nbActions: String(pea[i].nbActions), prixAchat: String(pea[i].prixAchat), prixActuel: String(pea[i].prixActuel) });
-    setEditPeaIdx(i);
+  const startEditPea = (id) => {
+    const tx = peaTx.find((t) => t.id === id);
+    if (!tx) return;
+    setFormPea({
+      ...tx,
+      nbActions:       String(tx.nbActions),
+      prixUnitaire:    String(tx.prixUnitaire),
+      prixUnitaireEUR: String(tx.prixUnitaireEUR),
+    });
+    setEditPeaId(id);
     setPeaErrors({});
-    // Annuler l'édition CT en cours si besoin
-    setEditCtIdx(null);
-    setFormCt(EMPTY_POS);
+    setEditCtId(null);
+    setFormCt(emptyTx());
   };
 
   const updatePea = () => {
-    const errs = validatePos(formPea);
+    const errs = validateTx(formPea);
     if (hasError(errs)) { setPeaErrors(errs); return; }
-    setPea((prev) => { const u = [...prev]; u[editPeaIdx] = toPosition(formPea); return u; });
-    setFormPea(EMPTY_POS);
-    setEditPeaIdx(null);
+    setPeaTx((prev) => prev.map((t) => t.id === editPeaId ? toTransaction(formPea, editPeaId) : t));
+    setFormPea(emptyTx());
+    setEditPeaId(null);
     setPeaErrors({});
   };
 
-  const cancelPea = () => { setFormPea(EMPTY_POS); setEditPeaIdx(null); setPeaErrors({}); };
+  const cancelPea = () => { setFormPea(emptyTx()); setEditPeaId(null); setPeaErrors({}); };
 
-  const deletePea = (i) => {
-    setPea(pea.filter((_, idx) => idx !== i));
-    if (editPeaIdx === i) cancelPea();
-    else if (editPeaIdx > i) setEditPeaIdx(editPeaIdx - 1);
+  const deletePea = (id) => {
+    setPeaTx((prev) => prev.filter((t) => t.id !== id));
+    if (editPeaId === id) cancelPea();
   };
 
-  /* ── CT actions ── */
+  /* ── CT ── */
   const addCt = () => {
-    const errs = validatePos(formCt);
+    const errs = validateTx(formCt);
     if (hasError(errs)) { setCtErrors(errs); return; }
-    setCt([...ct, toPosition(formCt)]);
-    setFormCt(EMPTY_POS);
+    setCtTx([...ctTx, toTransaction(formCt)]);
+    setFormCt(emptyTx());
     setCtErrors({});
   };
 
-  const startEditCt = (i) => {
-    setFormCt({ ...ct[i], nbActions: String(ct[i].nbActions), prixAchat: String(ct[i].prixAchat), prixActuel: String(ct[i].prixActuel) });
-    setEditCtIdx(i);
+  const startEditCt = (id) => {
+    const tx = ctTx.find((t) => t.id === id);
+    if (!tx) return;
+    setFormCt({
+      ...tx,
+      nbActions:       String(tx.nbActions),
+      prixUnitaire:    String(tx.prixUnitaire),
+      prixUnitaireEUR: String(tx.prixUnitaireEUR),
+    });
+    setEditCtId(id);
     setCtErrors({});
-    setEditPeaIdx(null);
-    setFormPea(EMPTY_POS);
+    setEditPeaId(null);
+    setFormPea(emptyTx());
   };
 
   const updateCt = () => {
-    const errs = validatePos(formCt);
+    const errs = validateTx(formCt);
     if (hasError(errs)) { setCtErrors(errs); return; }
-    setCt((prev) => { const u = [...prev]; u[editCtIdx] = toPosition(formCt); return u; });
-    setFormCt(EMPTY_POS);
-    setEditCtIdx(null);
+    setCtTx((prev) => prev.map((t) => t.id === editCtId ? toTransaction(formCt, editCtId) : t));
+    setFormCt(emptyTx());
+    setEditCtId(null);
     setCtErrors({});
   };
 
-  const cancelCt = () => { setFormCt(EMPTY_POS); setEditCtIdx(null); setCtErrors({}); };
+  const cancelCt = () => { setFormCt(emptyTx()); setEditCtId(null); setCtErrors({}); };
 
-  const deleteCt = (i) => {
-    setCt(ct.filter((_, idx) => idx !== i));
-    if (editCtIdx === i) cancelCt();
-    else if (editCtIdx > i) setEditCtIdx(editCtIdx - 1);
+  const deleteCt = (id) => {
+    setCtTx((prev) => prev.filter((t) => t.id !== id));
+    if (editCtId === id) cancelCt();
   };
 
-  /* ── Rafraîchir tout ── */
+  /* ── Rafraîchir tous les prix (met à jour priceCache uniquement) ── */
   const refreshAllPrices = async () => {
     setRefreshing(true);
-    const refreshArr = async (arr) => {
-      const updated = [...arr];
-      await Promise.all(updated.map(async (pos, i) => {
-        if (!pos.ticker?.trim()) return;
-        try { updated[i] = applyQuote(pos, await fetchQuote(pos.ticker.trim())); } catch {}
-      }));
-      return updated;
-    };
-    const [newPea, newCt] = await Promise.all([refreshArr(pea), refreshArr(ct)]);
-    setPea(newPea);
-    setCt(newCt);
+    const tickers = [...new Set([...peaTx, ...ctTx].map((tx) => tx.ticker?.toUpperCase()).filter(Boolean))];
+    const updated = { ...priceCache };
+    await Promise.all(tickers.map(async (ticker) => {
+      try {
+        const { prixActuelEUR, devise } = await fetchQuote(ticker);
+        updated[ticker] = { prixActuelEUR: prixActuelEUR ?? 0, devise: devise || "EUR", updatedAt: Date.now() };
+      } catch {}
+    }));
+    setPriceCache(updated);
     setRefreshing(false);
   };
 
   /* ── Export / Import ── */
   const handleExport = () => {
-    const blob = new Blob([JSON.stringify({ pea, ct }, null, 2)], { type: "application/json" });
+    const blob = new Blob([JSON.stringify({ peaTx, ctTx, priceCache }, null, 2)], { type: "application/json" });
     const url  = URL.createObjectURL(blob);
     const a    = document.createElement("a");
     a.href = url;
@@ -514,8 +655,26 @@ export function SaisieTab({ pea, ct, setPea, setCt }) {
     reader.onload = (ev) => {
       try {
         const parsed = JSON.parse(ev.target.result);
-        if (Array.isArray(parsed.pea)) setPea(parsed.pea);
-        if (Array.isArray(parsed.ct))  setCt(parsed.ct);
+        if (Array.isArray(parsed.peaTx)) {
+          setPeaTx(parsed.peaTx);
+          setCtTx(parsed.ctTx ?? []);
+          if (parsed.priceCache) setPriceCache(parsed.priceCache);
+        } else if (Array.isArray(parsed.pea)) {
+          // Migration ancien format
+          const migrate = (arr) => arr.map((pos) => ({
+            id: crypto.randomUUID(), date: "2024-01-01",
+            type: TX_TYPES.ACHAT,
+            ticker: pos.ticker ?? "", nom: pos.nom ?? "", secteur: pos.secteur ?? "",
+            nbActions: parseFloat(pos.nbActions) || 0,
+            prixUnitaire: parseFloat(pos.prixAchat) || 0,
+            devise: "EUR",
+            prixUnitaireEUR: parseFloat(pos.prixAchat) || 0,
+          }));
+          setPeaTx(migrate(parsed.pea));
+          setCtTx(migrate(parsed.ct ?? []));
+        } else {
+          alert("Format de fichier non reconnu");
+        }
       } catch {
         alert("Fichier invalide — JSON attendu");
       }
@@ -526,36 +685,39 @@ export function SaisieTab({ pea, ct, setPea, setCt }) {
 
   return (
     <div>
-      {/* Bouton rafraîchir tout */}
+      {/* Rafraîchir tout */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <button onClick={refreshAllPrices} disabled={refreshing} style={outlineBtn(C.accent, refreshing)}>
           {refreshing ? "Mise à jour…" : "↻ Rafraîchir tous les prix"}
         </button>
       </div>
 
-      {/* Formulaires de saisie */}
+      {/* Formulaires */}
       <AddForm
-        title="PEA — Nouvelle position" color={C.pea}
+        title="PEA — Nouvelle transaction" color={C.pea}
         form={formPea} setForm={setFormPea}
-        editIdx={editPeaIdx}
+        editId={editPeaId}
         onAdd={addPea} onUpdate={updatePea} onCancel={cancelPea}
         errors={peaErrors} setErrors={setPeaErrors}
+        priceCache={priceCache} setPriceCache={setPriceCache}
       />
       <AddForm
-        title="Compte-Titre — Nouvelle position" color={C.ct}
+        title="Compte-Titre — Nouvelle transaction" color={C.ct}
         form={formCt} setForm={setFormCt}
-        editIdx={editCtIdx}
+        editId={editCtId}
         onAdd={addCt} onUpdate={updateCt} onCancel={cancelCt}
         errors={ctErrors} setErrors={setCtErrors}
+        priceCache={priceCache} setPriceCache={setPriceCache}
       />
 
-      {/* Historique des positions */}
-      <PositionHistory
-        pea={pea} ct={ct}
-        editPeaIdx={editPeaIdx} editCtIdx={editCtIdx}
+      {/* Journal */}
+      <TransactionLog
+        peaTx={peaTx} ctTx={ctTx}
+        editPeaId={editPeaId} editCtId={editCtId}
         onEditPea={startEditPea} onEditCt={startEditCt}
-        onDeletePea={deletePea} onDeleteCt={deleteCt}
-        setPea={setPea} setCt={setCt}
+        onDeletePea={deletePea}  onDeleteCt={deleteCt}
+        setPeaTx={setPeaTx} setCtTx={setCtTx}
+        priceCache={priceCache} setPriceCache={setPriceCache}
       />
 
       {/* Export / Import */}

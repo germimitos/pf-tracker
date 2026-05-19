@@ -58,11 +58,23 @@ function parseSector(json, ticker) {
   return match?.sector ?? "";
 }
 
+// Retourne le nombre d'EUR pour 1 unité de `fromCurrency`
+// EURUSD=X = nb USD par 1 EUR → on inverse pour obtenir EUR par USD
+export async function fetchFxRate(fromCurrency) {
+  if (!fromCurrency || fromCurrency === "EUR") return 1;
+  const ticker = `EUR${fromCurrency}=X`;
+  const path   = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
+  const json   = await fetchViaProxy(path);
+  const meta   = json?.chart?.result?.[0]?.meta;
+  if (!meta) throw new Error(`Taux EUR/${fromCurrency} introuvable`);
+  const rate = meta.regularMarketPrice ?? 1;
+  return 1 / rate;
+}
+
 export async function fetchQuote(ticker) {
   const chartPath  = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
   const searchPath = `/v1/finance/search?q=${encodeURIComponent(ticker)}&quotesCount=1&newsCount=0`;
 
-  // Les deux appels en parallèle — la recherche de secteur est optionnelle
   const [chartJson, searchJson] = await Promise.all([
     fetchViaProxy(chartPath),
     fetchViaProxy(searchPath).catch(() => null),
@@ -71,6 +83,17 @@ export async function fetchQuote(ticker) {
   const result = parseChart(chartJson, ticker);
   result.secteur = parseSector(searchJson, ticker);
 
-  console.info(`[yf] ${ticker} → ${result.nom} | ${result.prixActuel} ${result.devise} | secteur: ${result.secteur || "—"}`);
+  if (result.devise === "EUR") {
+    result.prixActuelEUR = result.prixActuel;
+  } else {
+    try {
+      const fxRate = await fetchFxRate(result.devise);
+      result.prixActuelEUR = result.prixActuel * fxRate;
+    } catch {
+      result.prixActuelEUR = result.prixActuel;
+    }
+  }
+
+  console.info(`[yf] ${ticker} → ${result.nom} | ${result.prixActuel} ${result.devise} (${result.prixActuelEUR?.toFixed(2)} €) | secteur: ${result.secteur || "—"}`);
   return result;
 }

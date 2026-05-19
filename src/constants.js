@@ -1,4 +1,5 @@
-export const ACCOUNTS = { PEA: "PEA", CT: "CT" };
+export const ACCOUNTS  = { PEA: "PEA", CT: "CT" };
+export const TX_TYPES  = { ACHAT: "ACHAT", VENTE: "VENTE" };
 
 export const C = {
   pea: "#4ade80",

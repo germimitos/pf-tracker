@@ -34,12 +34,22 @@ module.exports = async function handler(req, res) {
   // POST — sauvegarde le portefeuille
   if (req.method === "POST") {
     try {
-      const { pea, ct } = req.body ?? {};
-      if (!pea || !ct) {
-        return res.status(400).json({ error: "Payload invalide" });
+      const body = req.body ?? {};
+      // Nouveau format : { peaTx, ctTx, priceCache }
+      if (Array.isArray(body.peaTx)) {
+        await kvCommand(["SET", "portfolio", JSON.stringify({
+          peaTx:      body.peaTx,
+          ctTx:       body.ctTx       ?? [],
+          priceCache: body.priceCache ?? {},
+        })]);
+        return res.json({ ok: true });
       }
-      await kvCommand(["SET", "portfolio", JSON.stringify({ pea, ct })]);
-      return res.json({ ok: true });
+      // Ancien format : { pea, ct } — accepté pendant la transition
+      if (Array.isArray(body.pea)) {
+        await kvCommand(["SET", "portfolio", JSON.stringify({ pea: body.pea, ct: body.ct ?? [] })]);
+        return res.json({ ok: true });
+      }
+      return res.status(400).json({ error: "Payload invalide" });
     } catch (e) {
       return res.status(500).json({ error: e.message });
     }

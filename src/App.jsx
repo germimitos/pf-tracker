@@ -1,9 +1,10 @@
 import { useState, useEffect, useCallback } from "react";
-import { useParisTheme }   from "./hooks/useParisTheme";
-import { ThemeContext }     from "./context/ThemeContext";
+import { useParisTheme }    from "./hooks/useParisTheme";
+import { ThemeContext }      from "./context/ThemeContext";
 import { DEMO_PEA, DEMO_CT } from "./constants";
-import { DashboardTab } from "./components/DashboardTab";
-import { SaisieTab }    from "./components/SaisieTab";
+import { derivePositions }   from "./utils";
+import { DashboardTab }      from "./components/DashboardTab";
+import { SaisieTab }         from "./components/SaisieTab";
 
 function loadFromStorage(key, fallback) {
   try {
@@ -14,31 +15,75 @@ function loadFromStorage(key, fallback) {
   }
 }
 
-function saveToStorage(pea, ct) {
-  try {
-    localStorage.setItem("pft-pea", JSON.stringify(pea));
-    localStorage.setItem("pft-ct",  JSON.stringify(ct));
-  } catch {}
+// Convertit d'anciennes positions (modèle v1) en transactions ACHAT (modèle v2)
+function migratePositionsToTx(posArr) {
+  if (!Array.isArray(posArr)) return [];
+  return posArr.map((pos) => ({
+    id:              crypto.randomUUID(),
+    date:            "2024-01-01",
+    type:            "ACHAT",
+    ticker:          pos.ticker ?? "",
+    nom:             pos.nom    ?? "",
+    secteur:         pos.secteur ?? "",
+    nbActions:       parseFloat(pos.nbActions) || 0,
+    prixUnitaire:    parseFloat(pos.prixAchat)  || 0,
+    devise:          "EUR",
+    prixUnitaireEUR: parseFloat(pos.prixAchat)  || 0,
+  }));
+}
+
+// Construit le priceCache initial depuis d'anciennes positions
+function migratePriceCache(posArr) {
+  if (!Array.isArray(posArr)) return {};
+  const cache = {};
+  for (const pos of posArr) {
+    if (pos.ticker) {
+      cache[pos.ticker] = {
+        prixActuelEUR: parseFloat(pos.prixActuel) || 0,
+        devise:        "EUR",
+        updatedAt:     Date.now(),
+      };
+    }
+  }
+  return cache;
 }
 
 export default function App() {
   const [tab, setTab] = useState("dashboard");
   const { C, isDaytime } = useParisTheme();
 
-  // Initialisation depuis localStorage (rendu immédiat avant chargement DB)
-  const [pea, setPeaRaw] = useState(() => loadFromStorage("pft-pea", DEMO_PEA));
-  const [ct,  setCtRaw]  = useState(() => loadFromStorage("pft-ct",  DEMO_CT));
+  // Initialisation depuis localStorage avec migration v1 → v2
+  const [peaTx, setPeaTxRaw] = useState(() => {
+    const stored = loadFromStorage("pft-peaTx", null);
+    if (stored !== null) return stored;
+    const oldPea = loadFromStorage("pft-pea", null);
+    return oldPea ? migratePositionsToTx(oldPea) : migratePositionsToTx(DEMO_PEA);
+  });
+
+  const [ctTx, setCtTxRaw] = useState(() => {
+    const stored = loadFromStorage("pft-ctTx", null);
+    if (stored !== null) return stored;
+    const oldCt = loadFromStorage("pft-ct", null);
+    return oldCt ? migratePositionsToTx(oldCt) : migratePositionsToTx(DEMO_CT);
+  });
+
+  const [priceCache, setPriceCacheRaw] = useState(() => {
+    const stored = loadFromStorage("pft-priceCache", null);
+    if (stored !== null) return stored;
+    const oldPea = loadFromStorage("pft-pea", null);
+    const oldCt  = loadFromStorage("pft-ct",  null);
+    return { ...migratePriceCache(oldPea ?? DEMO_PEA), ...migratePriceCache(oldCt ?? DEMO_CT) };
+  });
 
   const [isDirty,  setIsDirty]  = useState(false);
   const [savedOk,  setSavedOk]  = useState(false);
   const [saveErr,  setSaveErr]  = useState(false);
-  // null = chargement, true = DB disponible, false = DB indisponible
   const [dbStatus, setDbStatus] = useState(null);
 
-  // Wrappers qui marquent le portefeuille comme modifié
   const dirty = (setter) => (val) => { setter(val); setIsDirty(true); };
-  const setPea = dirty(setPeaRaw);
-  const setCt  = dirty(setCtRaw);
+  const setPeaTx      = dirty(setPeaTxRaw);
+  const setCtTx       = dirty(setCtTxRaw);
+  const setPriceCache = dirty(setPriceCacheRaw);
 
   // Chargement initial depuis la DB
   useEffect(() => {
@@ -50,30 +95,36 @@ export default function App() {
       })
       .then((data) => {
         setDbStatus(true);
-        if (data && Array.isArray(data.pea)) {
-          setPeaRaw(data.pea);
-          setCtRaw(data.ct);
+        if (!data) return;
+        if (Array.isArray(data.peaTx)) {
+          // Nouveau format
+          setPeaTxRaw(data.peaTx);
+          setCtTxRaw(data.ctTx ?? []);
+          setPriceCacheRaw(data.priceCache ?? {});
+        } else if (Array.isArray(data.pea)) {
+          // Ancien format — migration transparente
+          setPeaTxRaw(migratePositionsToTx(data.pea));
+          setCtTxRaw(migratePositionsToTx(data.ct ?? []));
+          setPriceCacheRaw({ ...migratePriceCache(data.pea), ...migratePriceCache(data.ct ?? []) });
         }
       })
-      .catch((e) => {
-        setDbStatus(e.message === "not_configured" ? false : false);
-      });
+      .catch(() => setDbStatus(false));
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const save = useCallback(async () => {
     setSaveErr(false);
     try {
       if (dbStatus) {
-        // Sauvegarde en base de données
         const r = await fetch("/api/portfolio", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ pea, ct }),
+          body:    JSON.stringify({ peaTx, ctTx, priceCache }),
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } else {
-        // Fallback localStorage (dev local ou DB non configurée)
-        saveToStorage(pea, ct);
+        localStorage.setItem("pft-peaTx",      JSON.stringify(peaTx));
+        localStorage.setItem("pft-ctTx",        JSON.stringify(ctTx));
+        localStorage.setItem("pft-priceCache",  JSON.stringify(priceCache));
       }
       setIsDirty(false);
       setSavedOk(true);
@@ -82,7 +133,11 @@ export default function App() {
       setSaveErr(true);
       setTimeout(() => setSaveErr(false), 3000);
     }
-  }, [dbStatus, pea, ct]);
+  }, [dbStatus, peaTx, ctTx, priceCache]);
+
+  // Positions dérivées pour le Dashboard (calcul pur, pas de state)
+  const peaPositions = derivePositions(peaTx ?? [], priceCache);
+  const ctPositions  = derivePositions(ctTx  ?? [], priceCache);
 
   const tabBtn = (key, label) => (
     <button
@@ -151,7 +206,6 @@ export default function App() {
               }}>
                 {isDaytime ? "☀ JOUR" : "☾ NUIT"}
               </span>
-              {/* Indicateur DB */}
               <span style={{
                 fontSize:      10,
                 fontFamily:    "monospace",
@@ -204,8 +258,12 @@ export default function App() {
 
         <div style={{ padding: "32px" }}>
           {tab === "dashboard"
-            ? <DashboardTab pea={pea} ct={ct} />
-            : <SaisieTab pea={pea} ct={ct} setPea={setPea} setCt={setCt} />
+            ? <DashboardTab pea={peaPositions} ct={ctPositions} />
+            : <SaisieTab
+                peaTx={peaTx ?? []}        ctTx={ctTx ?? []}
+                setPeaTx={setPeaTx}        setCtTx={setCtTx}
+                priceCache={priceCache}    setPriceCache={setPriceCache}
+              />
           }
         </div>
       </div>
