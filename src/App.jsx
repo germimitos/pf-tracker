@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useParisTheme }   from "./hooks/useParisTheme";
 import { ThemeContext }     from "./context/ThemeContext";
-import { DEMO_PEA, DEMO_CT, DEMO_HISTORY } from "./constants";
+import { DEMO_PEA, DEMO_CT } from "./constants";
 import { DashboardTab } from "./components/DashboardTab";
 import { SaisieTab }    from "./components/SaisieTab";
 
@@ -14,11 +14,10 @@ function loadFromStorage(key, fallback) {
   }
 }
 
-function saveToStorage(pea, ct, history) {
+function saveToStorage(pea, ct) {
   try {
-    localStorage.setItem("pft-pea",     JSON.stringify(pea));
-    localStorage.setItem("pft-ct",      JSON.stringify(ct));
-    localStorage.setItem("pft-history", JSON.stringify(history));
+    localStorage.setItem("pft-pea", JSON.stringify(pea));
+    localStorage.setItem("pft-ct",  JSON.stringify(ct));
   } catch {}
 }
 
@@ -27,9 +26,8 @@ export default function App() {
   const { C, isDaytime } = useParisTheme();
 
   // Initialisation depuis localStorage (rendu immédiat avant chargement DB)
-  const [pea,     setPeaRaw]     = useState(() => loadFromStorage("pft-pea",     DEMO_PEA));
-  const [ct,      setCtRaw]      = useState(() => loadFromStorage("pft-ct",      DEMO_CT));
-  const [history, setHistoryRaw] = useState(() => loadFromStorage("pft-history", DEMO_HISTORY));
+  const [pea, setPeaRaw] = useState(() => loadFromStorage("pft-pea", DEMO_PEA));
+  const [ct,  setCtRaw]  = useState(() => loadFromStorage("pft-ct",  DEMO_CT));
 
   const [isDirty,  setIsDirty]  = useState(false);
   const [savedOk,  setSavedOk]  = useState(false);
@@ -39,9 +37,8 @@ export default function App() {
 
   // Wrappers qui marquent le portefeuille comme modifié
   const dirty = (setter) => (val) => { setter(val); setIsDirty(true); };
-  const setPea     = dirty(setPeaRaw);
-  const setCt      = dirty(setCtRaw);
-  const setHistory = dirty(setHistoryRaw);
+  const setPea = dirty(setPeaRaw);
+  const setCt  = dirty(setCtRaw);
 
   // Chargement initial depuis la DB
   useEffect(() => {
@@ -56,7 +53,6 @@ export default function App() {
         if (data && Array.isArray(data.pea)) {
           setPeaRaw(data.pea);
           setCtRaw(data.ct);
-          setHistoryRaw(data.history);
         }
       })
       .catch((e) => {
@@ -72,12 +68,12 @@ export default function App() {
         const r = await fetch("/api/portfolio", {
           method:  "POST",
           headers: { "Content-Type": "application/json" },
-          body:    JSON.stringify({ pea, ct, history }),
+          body:    JSON.stringify({ pea, ct }),
         });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
       } else {
         // Fallback localStorage (dev local ou DB non configurée)
-        saveToStorage(pea, ct, history);
+        saveToStorage(pea, ct);
       }
       setIsDirty(false);
       setSavedOk(true);
@@ -86,7 +82,7 @@ export default function App() {
       setSaveErr(true);
       setTimeout(() => setSaveErr(false), 3000);
     }
-  }, [dbStatus, pea, ct, history]);
+  }, [dbStatus, pea, ct]);
 
   const tabBtn = (key, label) => (
     <button
@@ -208,8 +204,8 @@ export default function App() {
 
         <div style={{ padding: "32px" }}>
           {tab === "dashboard"
-            ? <DashboardTab pea={pea} ct={ct} history={history} />
-            : <SaisieTab pea={pea} ct={ct} history={history} setPea={setPea} setCt={setCt} setHistory={setHistory} />
+            ? <DashboardTab pea={pea} ct={ct} />
+            : <SaisieTab pea={pea} ct={ct} setPea={setPea} setCt={setCt} />
           }
         </div>
       </div>

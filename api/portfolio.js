@@ -34,11 +34,11 @@ module.exports = async function handler(req, res) {
   // POST — sauvegarde le portefeuille
   if (req.method === "POST") {
     try {
-      const { pea, ct, history } = req.body ?? {};
-      if (!pea || !ct || !history) {
+      const { pea, ct } = req.body ?? {};
+      if (!pea || !ct) {
         return res.status(400).json({ error: "Payload invalide" });
       }
-      await kvCommand(["SET", "portfolio", JSON.stringify({ pea, ct, history })]);
+      await kvCommand(["SET", "portfolio", JSON.stringify({ pea, ct })]);
       return res.json({ ok: true });
     } catch (e) {
       return res.status(500).json({ error: e.message });

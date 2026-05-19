@@ -1,14 +1,13 @@
 import { useState } from "react";
 import {
-  AreaChart, Area, PieChart, Pie, Cell,
+  PieChart, Pie, Cell,
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from "recharts";
 import { SECTOR_COLORS, ACCOUNTS } from "../constants";
 import { useTheme } from "../context/ThemeContext";
-import { fmt, pct, perf, fmtMonth } from "../utils";
+import { fmt, pct, perf } from "../utils";
 import { StatCard } from "./StatCard";
-import { CustomTooltip } from "./CustomTooltip";
 
 const COLS = [
   { label: "Actif",     key: "nom",     fn: (p) => (p.nom || "").toLowerCase() },
@@ -38,7 +37,7 @@ function SortIndicator({ colKey, sort }) {
   );
 }
 
-export function DashboardTab({ pea, ct, history }) {
+export function DashboardTab({ pea, ct }) {
   const C = useTheme();
   const [sort, setSort] = useState({ key: "valeur", dir: -1 });
 
@@ -52,8 +51,6 @@ export function DashboardTab({ pea, ct, history }) {
   const totalPct = totalRev > 0 ? perf(totalVal, totalRev) : 0;
   const peaPct   = peaRev   > 0 ? perf(peaVal,   peaRev)   : 0;
   const ctPct    = ctRev    > 0 ? perf(ctVal,    ctRev)     : 0;
-
-  const histData = history.map((h) => ({ ...h, total: h.pea + h.ct }));
 
   const allPos = [
     ...pea.map((x) => ({ ...x, compte: ACCOUNTS.PEA })),
@@ -87,41 +84,6 @@ export function DashboardTab({ pea, ct, history }) {
         <StatCard label="PEA"          value={fmt(peaVal)} color={C.pea} sub={pct(peaPct)} />
         <StatCard label="Compte-Titre" value={fmt(ctVal)}  color={C.ct}  sub={pct(ctPct)}  />
       </div>
-
-      {/* Évolution historique */}
-      {histData.length > 1 && (
-        <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24 }}>
-          <div style={{ color: C.muted, fontSize: 11, letterSpacing: 2, fontFamily: "monospace", textTransform: "uppercase", marginBottom: 16 }}>
-            Évolution de la valeur
-          </div>
-          <ResponsiveContainer width="100%" height={240}>
-            <AreaChart data={histData}>
-              <defs>
-                <linearGradient id="gPea" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.pea}    stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={C.pea}    stopOpacity={0}   />
-                </linearGradient>
-                <linearGradient id="gCt" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.ct}     stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={C.ct}     stopOpacity={0}   />
-                </linearGradient>
-                <linearGradient id="gTotal" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="5%"  stopColor={C.accent} stopOpacity={0.3} />
-                  <stop offset="95%" stopColor={C.accent} stopOpacity={0}   />
-                </linearGradient>
-              </defs>
-              <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
-              <XAxis dataKey="date" tick={{ fill: C.muted, fontSize: 11 }} tickFormatter={fmtMonth} />
-              <YAxis tick={{ fill: C.muted, fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k€`} />
-              <Tooltip content={<CustomTooltip />} />
-              <Legend wrapperStyle={{ color: C.muted, fontSize: 12 }} />
-              <Area type="monotone" dataKey="total" name="Total"        stroke={C.accent} fill="url(#gTotal)" strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="pea"   name="PEA"          stroke={C.pea}    fill="url(#gPea)"   strokeWidth={2} dot={false} />
-              <Area type="monotone" dataKey="ct"    name="Compte-Titre" stroke={C.ct}     fill="url(#gCt)"    strokeWidth={2} dot={false} />
-            </AreaChart>
-          </ResponsiveContainer>
-        </div>
-      )}
 
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
         {/* Répartition sectorielle */}
