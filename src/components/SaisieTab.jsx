@@ -41,7 +41,7 @@ const outlineBtn = (color, disabled) => ({
 });
 
 const POS_FIELDS = [
-  { key: "ticker",     label: "Ticker",          type: "text",   width: 78,  placeholder: "AAPL"   },
+  { key: "ticker",     label: "Ticker",          type: "text",   width: 130, placeholder: "AAPL"   },
   { key: "nom",        label: "Entreprise",       type: "text",   width: 165, placeholder: "Auto"   },
   { key: "secteur",    label: "Secteur",          type: "text",   width: 115, placeholder: ""        },
   { key: "nbActions",  label: "Nb actions",       type: "number", width: 80,  placeholder: "10"     },
@@ -184,7 +184,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
         <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>{title}</span>
       </div>
-      <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 820 }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 880 }}>
         <thead>
           <tr>
             {POS_FIELDS.map((f) => <th key={f.key} style={{ ...thStyle, width: f.width }}>{f.label}</th>)}
@@ -258,7 +258,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
                         setNewTickerErr(false);
                       }}
                       onKeyDown={(e) => e.key === "Enter" && lookupNewTicker()}
-                      style={{ ...inputStyle(newTickerErr, C, f.width - 36) }}
+                      style={{ ...inputStyle(newTickerErr, C, f.width - 38) }}
                     />
                     <button
                       onClick={lookupNewTicker}
