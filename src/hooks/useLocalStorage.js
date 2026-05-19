@@ -11,11 +11,11 @@ export function useLocalStorage(key, initialValue) {
   });
 
   const set = (val) => {
-    const next = typeof val === "function" ? val(value) : val;
-    setValue(next);
-    try {
-      localStorage.setItem(key, JSON.stringify(next));
-    } catch {}
+    setValue((prev) => {
+      const next = typeof val === "function" ? val(prev) : val;
+      try { localStorage.setItem(key, JSON.stringify(next)); } catch {}
+      return next;
+    });
   };
 
   return [value, set];

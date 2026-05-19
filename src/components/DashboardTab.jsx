@@ -4,7 +4,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from "recharts";
-import { C, SECTOR_COLORS } from "../constants";
+import { C, SECTOR_COLORS, ACCOUNTS } from "../constants";
 import { fmt, pct, perf, fmtMonth } from "../utils";
 import { StatCard } from "./StatCard";
 import { CustomTooltip } from "./CustomTooltip";
@@ -29,6 +29,14 @@ const COLS = [
   },
 ];
 
+function SortIndicator({ colKey, sort }) {
+  return (
+    <span style={{ marginLeft: 4, opacity: sort.key === colKey ? 1 : 0.25 }}>
+      {sort.key === colKey && sort.dir === 1 ? "▲" : "▼"}
+    </span>
+  );
+}
+
 export function DashboardTab({ pea, ct, history }) {
   const [sort, setSort] = useState({ key: "valeur", dir: -1 });
 
@@ -43,15 +51,11 @@ export function DashboardTab({ pea, ct, history }) {
   const peaPct   = peaRev   > 0 ? perf(peaVal,   peaRev)   : 0;
   const ctPct    = ctRev    > 0 ? perf(ctVal,    ctRev)     : 0;
 
-  const histData = history.map((h, i) => {
-    const total = h.pea + h.ct;
-    const prev  = i > 0 ? history[i - 1].pea + history[i - 1].ct : total;
-    return { ...h, total, evolution: i > 0 ? ((total - prev) / prev) * 100 : 0 };
-  });
+  const histData = history.map((h) => ({ ...h, total: h.pea + h.ct }));
 
   const allPos = [
-    ...pea.map((x) => ({ ...x, compte: "PEA" })),
-    ...ct.map((x)  => ({ ...x, compte: "CT"  })),
+    ...pea.map((x) => ({ ...x, compte: ACCOUNTS.PEA })),
+    ...ct.map((x)  => ({ ...x, compte: ACCOUNTS.CT  })),
   ];
 
   const bySector = {};
@@ -70,12 +74,6 @@ export function DashboardTab({ pea, ct, history }) {
     const vb = activeCol ? activeCol.fn(b) : 0;
     return va < vb ? sort.dir : va > vb ? -sort.dir : 0;
   });
-
-  const SortIndicator = ({ colKey }) => (
-    <span style={{ marginLeft: 4, opacity: sort.key === colKey ? 1 : 0.25 }}>
-      {sort.key === colKey && sort.dir === 1 ? "▲" : "▼"}
-    </span>
-  );
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 24 }}>
@@ -123,7 +121,7 @@ export function DashboardTab({ pea, ct, history }) {
         </div>
       )}
 
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 20 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(300px, 1fr))", gap: 20 }}>
         {/* Répartition sectorielle */}
         {sectorData.length > 0 && (
           <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24 }}>
@@ -133,9 +131,9 @@ export function DashboardTab({ pea, ct, history }) {
             <ResponsiveContainer width="100%" height={220}>
               <PieChart>
                 <Pie data={sectorData} cx="50%" cy="50%" innerRadius={55} outerRadius={90} paddingAngle={3} dataKey="value">
-                  {sectorData.map((_, i) => <Cell key={i} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />)}
+                  {sectorData.map((entry, i) => <Cell key={entry.name} fill={SECTOR_COLORS[i % SECTOR_COLORS.length]} />)}
                 </Pie>
-                <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: "#1e293b", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+                <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
                 <Legend wrapperStyle={{ color: C.muted, fontSize: 11 }} />
               </PieChart>
             </ResponsiveContainer>
@@ -156,7 +154,7 @@ export function DashboardTab({ pea, ct, history }) {
               <CartesianGrid strokeDasharray="3 3" stroke={C.border} />
               <XAxis dataKey="name" tick={{ fill: C.muted, fontSize: 11 }} />
               <YAxis tick={{ fill: C.muted, fontSize: 11 }} tickFormatter={(v) => `${(v / 1000).toFixed(0)}k`} />
-              <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: "#1e293b", border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
+              <Tooltip formatter={(v) => fmt(v)} contentStyle={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 8, fontSize: 12 }} />
               <Legend wrapperStyle={{ color: C.muted, fontSize: 12 }} />
               <Bar dataKey="PEA" fill={C.pea} radius={[4, 4, 0, 0]} />
               <Bar dataKey="CT"  fill={C.ct}  radius={[4, 4, 0, 0]} />
@@ -165,7 +163,7 @@ export function DashboardTab({ pea, ct, history }) {
         </div>
       </div>
 
-      {/* Tableau des positions — tri par colonne */}
+      {/* Tableau des positions */}
       <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 24 }}>
         <div style={{ color: C.muted, fontSize: 11, letterSpacing: 2, fontFamily: "monospace", textTransform: "uppercase", marginBottom: 16 }}>
           Détail des positions
@@ -177,6 +175,9 @@ export function DashboardTab({ pea, ct, history }) {
                 <th
                   key={col.key}
                   onClick={() => toggleSort(col.key)}
+                  onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && toggleSort(col.key)}
+                  tabIndex={0}
+                  aria-sort={sort.key === col.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
                   style={{
                     color: sort.key === col.key ? C.text : C.muted,
                     textAlign: "left",
@@ -190,24 +191,24 @@ export function DashboardTab({ pea, ct, history }) {
                     whiteSpace: "nowrap",
                   }}
                 >
-                  {col.label}<SortIndicator colKey={col.key} />
+                  {col.label}<SortIndicator colKey={col.key} sort={sort} />
                 </th>
               ))}
             </tr>
           </thead>
           <tbody>
-            {sortedPos.map((p, i) => {
+            {sortedPos.map((p) => {
               const val = parseFloat(p.valeurActuelle) || 0;
               const rev = parseFloat(p.prixRevient)    || 0;
               const pl  = val - rev;
               const pp  = rev > 0 ? perf(val, rev) : 0;
               return (
-                <tr key={i} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <tr key={`${p.compte}-${p.nom}`} style={{ borderBottom: `1px solid ${C.border}` }}>
                   <td style={{ padding: "10px 10px", color: C.text, fontWeight: 600 }}>{p.nom}</td>
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{
-                      background: p.compte === "PEA" ? "#14532d" : "#1e3a5f",
-                      color: p.compte === "PEA" ? C.pea : C.ct,
+                      background: p.compte === ACCOUNTS.PEA ? "#14532d" : "#1e3a5f",
+                      color: p.compte === ACCOUNTS.PEA ? C.pea : C.ct,
                       borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
                     }}>{p.compte}</span>
                   </td>

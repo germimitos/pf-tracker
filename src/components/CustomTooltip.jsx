@@ -8,7 +8,7 @@ export function CustomTooltip({ active, payload, label }) {
   const displayLabel = isYM(label) ? fmtMonth(label) : label;
   return (
     <div style={{
-      background: "#1e293b",
+      background: C.card,
       border: `1px solid ${C.border}`,
       borderRadius: 8,
       padding: "10px 14px",

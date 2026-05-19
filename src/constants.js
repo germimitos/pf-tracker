@@ -1,3 +1,5 @@
+export const ACCOUNTS = { PEA: "PEA", CT: "CT" };
+
 export const C = {
   pea: "#4ade80",
   ct: "#60a5fa",

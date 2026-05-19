@@ -1,5 +1,10 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { C } from "../constants";
+
+const thStyle = {
+  color: C.muted, textAlign: "left", padding: "6px 8px",
+  fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
+};
 
 const inputStyle = (error) => ({
   background: "#0d1526",
@@ -22,6 +27,17 @@ const btnStyle = (color) => ({
   color: "#0a0f1e",
   padding: "8px 18px",
   fontWeight: 700,
+  cursor: "pointer",
+  fontSize: 13,
+});
+
+const outlineBtn = (color) => ({
+  background: "none",
+  border: `1px solid ${color}`,
+  borderRadius: 8,
+  color: color,
+  padding: "8px 18px",
+  fontWeight: 600,
   cursor: "pointer",
   fontSize: 13,
 });
@@ -56,11 +72,6 @@ function validateHist(h) {
 const hasError = (e) => Object.values(e).some(Boolean);
 
 function TableSection({ title, color, data, setData, newLine, setNewLine, errors, setErrors }) {
-  const thStyle = {
-    color: C.muted, textAlign: "left", padding: "6px 8px",
-    fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
-  };
-
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
@@ -76,7 +87,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
         </thead>
         <tbody>
           {data.map((row, i) => (
-            <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+            <tr key={row.nom + (row.secteur || "")} style={{ borderTop: `1px solid ${C.border}` }}>
               {POS_FIELDS.map((f) => (
                 <td key={f.key} style={{ padding: "8px" }}>
                   <input
@@ -146,6 +157,7 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
   const [peaErrors,  setPeaErrors]  = useState({});
   const [ctErrors,   setCtErrors]   = useState({});
   const [histErrors, setHistErrors] = useState({});
+  const importRef = useRef(null);
 
   const addHist = () => {
     const errs = validateHist(newHist);
@@ -159,9 +171,32 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
     setHistErrors({});
   };
 
-  const thStyle = {
-    color: C.muted, textAlign: "left", padding: "6px 8px",
-    fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
+  const handleExport = () => {
+    const blob = new Blob([JSON.stringify({ pea, ct, history }, null, 2)], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `pf-tracker-${new Date().toISOString().slice(0, 10)}.json`;
+    a.click();
+    URL.revokeObjectURL(url);
+  };
+
+  const handleImport = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const parsed = JSON.parse(ev.target.result);
+        if (Array.isArray(parsed.pea))     setPea(parsed.pea);
+        if (Array.isArray(parsed.ct))      setCt(parsed.ct);
+        if (Array.isArray(parsed.history)) setHistory(parsed.history);
+      } catch {
+        alert("Fichier invalide — JSON attendu");
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = "";
   };
 
   return (
@@ -195,11 +230,15 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
           </thead>
           <tbody>
             {history.map((row, i) => (
-              <tr key={i} style={{ borderTop: `1px solid ${C.border}` }}>
+              <tr key={row.date} style={{ borderTop: `1px solid ${C.border}` }}>
                 <td style={{ padding: "8px" }}>
                   <input
                     type="month" value={row.date}
-                    onChange={(e) => { const u = [...history]; u[i] = { ...u[i], date: e.target.value }; setHistory(u); }}
+                    onChange={(e) => {
+                      const u = [...history];
+                      u[i] = { ...u[i], date: e.target.value };
+                      setHistory(u.sort((a, b) => a.date.localeCompare(b.date)));
+                    }}
                     style={inputStyle(false)}
                   />
                 </td>
@@ -257,7 +296,16 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
         </table>
       </div>
 
-      <div style={{ marginTop: 24, display: "flex", justifyContent: "flex-end" }}>
+      <div style={{ marginTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 12 }}>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={handleExport} style={outlineBtn(C.accent)}>
+            Exporter JSON
+          </button>
+          <button onClick={() => importRef.current?.click()} style={outlineBtn(C.muted)}>
+            Importer JSON
+          </button>
+          <input ref={importRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
+        </div>
         <button
           onClick={onReset}
           style={{

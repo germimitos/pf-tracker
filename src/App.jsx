@@ -5,10 +5,11 @@ import { DashboardTab } from "./components/DashboardTab";
 import { SaisieTab }    from "./components/SaisieTab";
 
 export default function App() {
-  const [tab,     setTab]     = useState("dashboard");
-  const [pea,     setPea]     = useLocalStorage("pft-pea",     DEMO_PEA);
-  const [ct,      setCt]      = useLocalStorage("pft-ct",      DEMO_CT);
-  const [history, setHistory] = useLocalStorage("pft-history", DEMO_HISTORY);
+  const [tab,        setTab]        = useState("dashboard");
+  const [isDemoData]                = useState(() => localStorage.getItem("pft-pea") === null);
+  const [pea,        setPea]        = useLocalStorage("pft-pea",     DEMO_PEA);
+  const [ct,         setCt]         = useLocalStorage("pft-ct",      DEMO_CT);
+  const [history,    setHistory]    = useLocalStorage("pft-history", DEMO_HISTORY);
 
   const reset = () => {
     setPea(DEMO_PEA);
@@ -47,10 +48,19 @@ export default function App() {
         justifyContent: "space-between",
       }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, fontFamily: "monospace" }}>
-            <span style={{ color: C.pea }}>P</span>
-            <span style={{ color: C.ct }}>F</span>
-            <span style={{ color: C.text }}> TRACKER</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ fontSize: 18, fontWeight: 800, letterSpacing: 2, fontFamily: "monospace" }}>
+              <span style={{ color: C.pea }}>P</span>
+              <span style={{ color: C.ct }}>F</span>
+              <span style={{ color: C.text }}> TRACKER</span>
+            </div>
+            {isDemoData && (
+              <span style={{
+                fontSize: 10, fontFamily: "monospace", letterSpacing: 1,
+                background: "#7c3aed22", color: "#a78bfa",
+                border: "1px solid #7c3aed55", borderRadius: 4, padding: "2px 7px",
+              }}>DEMO</span>
+            )}
           </div>
           <div style={{ fontSize: 11, color: C.muted, letterSpacing: 3, marginTop: 2, fontFamily: "monospace" }}>
             PEA · COMPTE-TITRE
