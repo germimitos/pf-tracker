@@ -15,7 +15,7 @@ const COLS = [
   { label: "Compte",    key: "compte",  fn: (p) => p.compte },
   { label: "Secteur",   key: "secteur", fn: (p) => p.secteur || "" },
   { label: "Valeur",    key: "valeur",  fn: (p) => parseFloat(p.valeurActuelle) || 0 },
-  { label: "P.Revient", key: "revient", fn: (p) => parseFloat(p.prixRevient) || 0 },
+  { label: "Investi",   key: "revient", fn: (p) => parseFloat(p.prixRevient) || 0 },
   {
     label: "P&L", key: "pl",
     fn: (p) => (parseFloat(p.valeurActuelle) || 0) - (parseFloat(p.prixRevient) || 0),

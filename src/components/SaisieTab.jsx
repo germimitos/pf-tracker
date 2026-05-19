@@ -1,15 +1,17 @@
 import { useState, useRef } from "react";
 import { useTheme } from "../context/ThemeContext";
+import { fetchQuote } from "../stockApi";
+import { fmt } from "../utils";
 
-const inputStyle = (error, C) => ({
+const inputStyle = (error, C, width) => ({
   background:   C.card,
   border:       `1px solid ${error ? C.moins : C.border}`,
   borderRadius: 8,
   color:        C.text,
-  padding:      "8px 12px",
-  fontSize:     13,
+  padding:      "7px 10px",
+  fontSize:     12,
   fontFamily:   "monospace",
-  width:        "100%",
+  width:        width ?? "100%",
   boxSizing:    "border-box",
   outline:      "none",
   transition:   "border-color 0.15s",
@@ -20,39 +22,42 @@ const btnStyle = (color) => ({
   border:       "none",
   borderRadius: 8,
   color:        "#0a0f1e",
-  padding:      "8px 18px",
+  padding:      "7px 14px",
   fontWeight:   700,
   cursor:       "pointer",
   fontSize:     13,
 });
 
-const outlineBtn = (color) => ({
+const outlineBtn = (color, disabled) => ({
   background:   "none",
   border:       `1px solid ${color}`,
   borderRadius: 8,
   color:        color,
   padding:      "8px 18px",
   fontWeight:   600,
-  cursor:       "pointer",
+  cursor:       disabled ? "not-allowed" : "pointer",
   fontSize:     13,
+  opacity:      disabled ? 0.5 : 1,
 });
 
 const POS_FIELDS = [
-  { key: "nom",            label: "Nom",                 type: "text"   },
-  { key: "secteur",        label: "Secteur",             type: "text"   },
-  { key: "valeurActuelle", label: "Valeur actuelle (€)", type: "number" },
-  { key: "prixRevient",    label: "Prix de revient (€)", type: "number" },
+  { key: "ticker",     label: "Ticker",          type: "text",   width: 78,  placeholder: "AAPL"   },
+  { key: "nom",        label: "Entreprise",       type: "text",   width: 165, placeholder: "Auto"   },
+  { key: "secteur",    label: "Secteur",          type: "text",   width: 115, placeholder: ""        },
+  { key: "nbActions",  label: "Nb actions",       type: "number", width: 80,  placeholder: "10"     },
+  { key: "prixAchat",  label: "Prix achat (€)",   type: "number", width: 100, placeholder: "150.00" },
+  { key: "prixActuel", label: "Prix actuel (€)",  type: "number", width: 100, placeholder: "Auto"   },
 ];
 
-const EMPTY_POS  = { nom: "", secteur: "", valeurActuelle: "", prixRevient: "" };
+const EMPTY_POS  = { ticker: "", nom: "", secteur: "", nbActions: "", prixAchat: "", prixActuel: "" };
 const EMPTY_HIST = { date: "", pea: "", ct: "" };
 
 function validatePos(line) {
-  const num = (v) => v === "" || isNaN(parseFloat(v)) || parseFloat(v) < 0;
+  const num = (v) => v === "" || isNaN(parseFloat(v));
   return {
-    nom:            !line.nom.trim(),
-    valeurActuelle: num(line.valeurActuelle),
-    prixRevient:    num(line.prixRevient),
+    nom:      !line.nom.trim(),
+    nbActions: num(line.nbActions) || parseFloat(line.nbActions) <= 0,
+    prixAchat: num(line.prixAchat) || parseFloat(line.prixAchat) < 0,
   };
 }
 
@@ -66,83 +71,173 @@ function validateHist(h) {
 
 const hasError = (e) => Object.values(e).some(Boolean);
 
+function applyQuote(pos, { nom, prixActuel }) {
+  const nb = parseFloat(pos.nbActions) || 0;
+  const pa = parseFloat(pos.prixAchat) || 0;
+  return { ...pos, nom, prixActuel, valeurActuelle: nb * prixActuel, prixRevient: nb * pa };
+}
+
+function derivedVal(row) {
+  const computed = (parseFloat(row.nbActions) || 0) * (parseFloat(row.prixActuel) || 0);
+  return computed > 0 ? computed : (parseFloat(row.valeurActuelle) || 0);
+}
+
 function TableSection({ title, color, data, setData, newLine, setNewLine, errors, setErrors }) {
   const C = useTheme();
+  const [loadingRows, setLoadingRows] = useState(new Set());
+  const [newLoading,  setNewLoading]  = useState(false);
+
   const thStyle = {
     color: C.muted, textAlign: "left", padding: "6px 8px",
     fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
   };
 
+  const setRowLoading = (i, v) =>
+    setLoadingRows(prev => { const s = new Set(prev); v ? s.add(i) : s.delete(i); return s; });
+
+  const refreshRow = async (i) => {
+    const ticker = data[i]?.ticker?.trim();
+    if (!ticker) return;
+    setRowLoading(i, true);
+    try {
+      const quote = await fetchQuote(ticker);
+      setData(prev => { const u = [...prev]; u[i] = applyQuote(u[i], quote); return u; });
+    } catch {}
+    setRowLoading(i, false);
+  };
+
+  const lookupNewTicker = async () => {
+    const ticker = newLine.ticker?.trim();
+    if (!ticker) return;
+    setNewLoading(true);
+    try {
+      const { nom, prixActuel } = await fetchQuote(ticker);
+      setNewLine(prev => ({ ...prev, nom, prixActuel: String(prixActuel) }));
+    } catch {}
+    setNewLoading(false);
+  };
+
+  const updateRow = (i, key, value) => {
+    setData(prev => {
+      const u = [...prev];
+      u[i] = { ...u[i], [key]: value };
+      const nb = parseFloat(u[i].nbActions)  || 0;
+      const pa = parseFloat(u[i].prixAchat)  || 0;
+      const pc = parseFloat(u[i].prixActuel) || 0;
+      u[i].valeurActuelle = nb * pc;
+      u[i].prixRevient    = nb * pa;
+      return u;
+    });
+  };
+
+  const addRow = () => {
+    const errs = validatePos(newLine);
+    if (hasError(errs)) { setErrors(errs); return; }
+    const nb = parseFloat(newLine.nbActions)  || 0;
+    const pa = parseFloat(newLine.prixAchat)  || 0;
+    const pc = parseFloat(newLine.prixActuel) || 0;
+    setData([...data, {
+      ticker:         newLine.ticker?.trim().toUpperCase() || "",
+      nom:            newLine.nom,
+      secteur:        newLine.secteur,
+      nbActions:      nb,
+      prixAchat:      pa,
+      prixActuel:     pc,
+      valeurActuelle: nb * pc,
+      prixRevient:    nb * pa,
+    }]);
+    setNewLine(EMPTY_POS);
+    setErrors({});
+  };
+
+  const previewVal = (parseFloat(newLine.nbActions) || 0) * (parseFloat(newLine.prixActuel) || 0);
+
   return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
+    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20, overflowX: "auto" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
         <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>{title}</span>
       </div>
-      <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 780 }}>
         <thead>
           <tr>
-            {POS_FIELDS.map((f) => <th key={f.key} style={thStyle}>{f.label}</th>)}
-            <th style={{ ...thStyle, width: 40 }} />
+            {POS_FIELDS.map((f) => <th key={f.key} style={{ ...thStyle, width: f.width }}>{f.label}</th>)}
+            <th style={{ ...thStyle, width: 90 }}>Valeur act.</th>
+            <th style={{ ...thStyle, width: 64 }} />
           </tr>
         </thead>
         <tbody>
-          {data.map((row, i) => (
-            <tr key={row.nom + (row.secteur || "")} style={{ borderTop: `1px solid ${C.border}` }}>
-              {POS_FIELDS.map((f) => (
-                <td key={f.key} style={{ padding: "8px" }}>
-                  <input
-                    value={row[f.key]}
-                    type={f.type}
-                    onChange={(e) => {
-                      const updated = [...data];
-                      updated[i] = { ...updated[i], [f.key]: e.target.value };
-                      setData(updated);
-                    }}
-                    style={inputStyle(false, C)}
-                  />
+          {data.map((row, i) => {
+            const loading = loadingRows.has(i);
+            return (
+              <tr key={row.nom + (row.secteur || "")} style={{ borderTop: `1px solid ${C.border}` }}>
+                {POS_FIELDS.map((f) => (
+                  <td key={f.key} style={{ padding: "5px 4px" }}>
+                    <input
+                      value={row[f.key] ?? ""}
+                      type={f.type}
+                      disabled={f.key === "nom" && loading}
+                      placeholder={f.key === "nom" && loading ? "Chargement…" : ""}
+                      onChange={(e) => {
+                        const val = f.key === "ticker" ? e.target.value.toUpperCase() : e.target.value;
+                        updateRow(i, f.key, val);
+                      }}
+                      onBlur={f.key === "ticker" ? () => refreshRow(i) : undefined}
+                      style={{ ...inputStyle(false, C, f.width - 8), opacity: (f.key === "nom" && loading) ? 0.5 : 1 }}
+                    />
+                  </td>
+                ))}
+                <td style={{ padding: "5px 8px", color: C.text, fontFamily: "monospace", fontWeight: 600, whiteSpace: "nowrap" }}>
+                  {fmt(derivedVal(row))}
                 </td>
-              ))}
-              <td style={{ padding: "8px 4px" }}>
-                <button
-                  onClick={() => setData(data.filter((_, idx) => idx !== i))}
-                  style={{ background: "none", border: "none", color: C.moins, cursor: "pointer", fontSize: 16 }}
-                >✕</button>
-              </td>
-            </tr>
-          ))}
+                <td style={{ padding: "5px 4px", whiteSpace: "nowrap" }}>
+                  <button
+                    onClick={() => refreshRow(i)}
+                    disabled={loading || !row.ticker?.trim()}
+                    title="Rafraîchir le prix"
+                    style={{
+                      background: "none", border: "none",
+                      color: row.ticker?.trim() ? C.accent : C.muted,
+                      cursor: row.ticker?.trim() && !loading ? "pointer" : "default",
+                      fontSize: 15, marginRight: 2, opacity: loading ? 0.4 : 1,
+                    }}
+                  >{loading ? "…" : "↻"}</button>
+                  <button
+                    onClick={() => setData(data.filter((_, idx) => idx !== i))}
+                    style={{ background: "none", border: "none", color: C.moins, cursor: "pointer", fontSize: 16 }}
+                  >✕</button>
+                </td>
+              </tr>
+            );
+          })}
 
           {/* Ligne d'ajout */}
           <tr style={{ borderTop: `1px solid ${C.border}` }}>
             {POS_FIELDS.map((f) => (
-              <td key={f.key} style={{ padding: "8px" }}>
+              <td key={f.key} style={{ padding: "5px 4px" }}>
                 <input
-                  placeholder={f.label}
-                  value={newLine[f.key]}
+                  value={newLine[f.key] ?? ""}
                   type={f.type}
+                  placeholder={f.key === "nom" && newLoading ? "Chargement…" : f.placeholder}
+                  disabled={f.key === "nom" && newLoading}
                   onChange={(e) => {
-                    setNewLine({ ...newLine, [f.key]: e.target.value });
+                    const val = f.key === "ticker" ? e.target.value.toUpperCase() : e.target.value;
+                    setNewLine({ ...newLine, [f.key]: val });
                     if (errors[f.key]) setErrors({ ...errors, [f.key]: false });
                   }}
-                  style={inputStyle(!!errors[f.key], C)}
+                  onBlur={f.key === "ticker" ? lookupNewTicker : undefined}
+                  style={{
+                    ...inputStyle(!!errors[f.key], C, f.width - 8),
+                    opacity: (f.key === "nom" && newLoading) ? 0.5 : 1,
+                  }}
                 />
               </td>
             ))}
-            <td style={{ padding: "8px 4px" }}>
-              <button
-                onClick={() => {
-                  const errs = validatePos(newLine);
-                  if (hasError(errs)) { setErrors(errs); return; }
-                  setData([...data, {
-                    ...newLine,
-                    valeurActuelle: parseFloat(newLine.valeurActuelle),
-                    prixRevient:    parseFloat(newLine.prixRevient),
-                  }]);
-                  setNewLine(EMPTY_POS);
-                  setErrors({});
-                }}
-                style={btnStyle(color)}
-              >+</button>
+            <td style={{ padding: "5px 8px", color: C.muted, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+              {previewVal > 0 ? fmt(previewVal) : "—"}
+            </td>
+            <td style={{ padding: "5px 4px" }}>
+              <button onClick={addRow} style={btnStyle(color)}>+</button>
             </td>
           </tr>
         </tbody>
@@ -164,6 +259,7 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
   const [peaErrors,  setPeaErrors]  = useState({});
   const [ctErrors,   setCtErrors]   = useState({});
   const [histErrors, setHistErrors] = useState({});
+  const [refreshing, setRefreshing] = useState(false);
   const importRef = useRef(null);
 
   const addHist = () => {
@@ -178,10 +274,32 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
     setHistErrors({});
   };
 
+  const refreshAllPrices = async () => {
+    setRefreshing(true);
+    const refreshArr = async (arr) => {
+      const updated = [...arr];
+      await Promise.all(
+        updated.map(async (pos, i) => {
+          const ticker = pos.ticker?.trim();
+          if (!ticker) return;
+          try {
+            const quote = await fetchQuote(ticker);
+            updated[i] = applyQuote(pos, quote);
+          } catch {}
+        })
+      );
+      return updated;
+    };
+    const [newPeaArr, newCtArr] = await Promise.all([refreshArr(pea), refreshArr(ct)]);
+    setPea(newPeaArr);
+    setCt(newCtArr);
+    setRefreshing(false);
+  };
+
   const handleExport = () => {
     const blob = new Blob([JSON.stringify({ pea, ct, history }, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
+    const url  = URL.createObjectURL(blob);
+    const a    = document.createElement("a");
     a.href = url;
     a.download = `pf-tracker-${new Date().toISOString().slice(0, 10)}.json`;
     a.click();
@@ -208,6 +326,16 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
 
   return (
     <div>
+      <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
+        <button
+          onClick={refreshAllPrices}
+          disabled={refreshing}
+          style={outlineBtn(C.accent, refreshing)}
+        >
+          {refreshing ? "Mise à jour…" : "↻ Rafraîchir tous les prix"}
+        </button>
+      </div>
+
       <TableSection
         title="PEA — Positions" color={C.pea}
         data={pea} setData={setPea}

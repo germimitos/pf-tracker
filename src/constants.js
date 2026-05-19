@@ -36,15 +36,15 @@ export const DEMO_HISTORY = [
 ];
 
 export const DEMO_PEA = [
-  { nom: "MSCI World (WPEA)", secteur: "ETF Monde",  valeurActuelle: 8200, prixRevient: 6500 },
-  { nom: "DCAM (Amundi)",     secteur: "ETF Monde",  valeurActuelle: 5100, prixRevient: 4200 },
-  { nom: "BNP Paribas",       secteur: "Finance",    valeurActuelle: 2400, prixRevient: 2100 },
-  { nom: "Air Liquide",       secteur: "Industrie",  valeurActuelle: 2400, prixRevient: 1900 },
+  { ticker: "WPEA.PA", nom: "Amundi MSCI World (WPEA)", secteur: "ETF Monde",  nbActions: 41, prixAchat: 158.54, prixActuel: 200.00, valeurActuelle: 8200, prixRevient: 6500 },
+  { ticker: "CW8.PA",  nom: "Amundi MSCI World (CW8)",  secteur: "ETF Monde",  nbActions: 17, prixAchat: 247.06, prixActuel: 300.00, valeurActuelle: 5100, prixRevient: 4200 },
+  { ticker: "BNP.PA",  nom: "BNP Paribas",              secteur: "Finance",    nbActions: 36, prixAchat:  58.33, prixActuel:  66.67, valeurActuelle: 2400, prixRevient: 2100 },
+  { ticker: "AI.PA",   nom: "Air Liquide",              secteur: "Industrie",  nbActions:  9, prixAchat: 211.11, prixActuel: 266.67, valeurActuelle: 2400, prixRevient: 1900 },
 ];
 
 export const DEMO_CT = [
-  { nom: "NVIDIA",   secteur: "Tech",               valeurActuelle: 3800, prixRevient: 2200 },
-  { nom: "Apple",    secteur: "Tech",               valeurActuelle: 2200, prixRevient: 1800 },
-  { nom: "Gold ETF", secteur: "Matières premières", valeurActuelle: 2100, prixRevient: 1900 },
-  { nom: "Visa",     secteur: "Finance",            valeurActuelle: 2000, prixRevient: 1700 },
+  { ticker: "NVDA",    nom: "NVIDIA Corporation",    secteur: "Tech",               nbActions: 10, prixAchat: 220.00, prixActuel: 380.00, valeurActuelle: 3800, prixRevient: 2200 },
+  { ticker: "AAPL",    nom: "Apple Inc.",            secteur: "Tech",               nbActions: 12, prixAchat: 150.00, prixActuel: 183.33, valeurActuelle: 2200, prixRevient: 1800 },
+  { ticker: "SGLD.PA", nom: "Invesco Physical Gold", secteur: "Matières premières", nbActions: 21, prixAchat:  90.48, prixActuel: 100.00, valeurActuelle: 2100, prixRevient: 1900 },
+  { ticker: "V",       nom: "Visa Inc.",             secteur: "Finance",            nbActions:  7, prixAchat: 242.86, prixActuel: 285.71, valeurActuelle: 2000, prixRevient: 1700 },
 ];
