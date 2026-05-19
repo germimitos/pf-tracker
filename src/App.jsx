@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { useParisTheme }   from "./hooks/useParisTheme";
 import { ThemeContext }     from "./context/ThemeContext";
 import { DEMO_PEA, DEMO_CT, DEMO_HISTORY } from "./constants";
@@ -14,32 +14,79 @@ function loadFromStorage(key, fallback) {
   }
 }
 
+function saveToStorage(pea, ct, history) {
+  try {
+    localStorage.setItem("pft-pea",     JSON.stringify(pea));
+    localStorage.setItem("pft-ct",      JSON.stringify(ct));
+    localStorage.setItem("pft-history", JSON.stringify(history));
+  } catch {}
+}
+
 export default function App() {
   const [tab, setTab] = useState("dashboard");
   const { C, isDaytime } = useParisTheme();
 
+  // Initialisation depuis localStorage (rendu immédiat avant chargement DB)
   const [pea,     setPeaRaw]     = useState(() => loadFromStorage("pft-pea",     DEMO_PEA));
   const [ct,      setCtRaw]      = useState(() => loadFromStorage("pft-ct",      DEMO_CT));
   const [history, setHistoryRaw] = useState(() => loadFromStorage("pft-history", DEMO_HISTORY));
 
-  const [isDirty, setIsDirty] = useState(false);
-  const [savedOk, setSavedOk] = useState(false);
+  const [isDirty,  setIsDirty]  = useState(false);
+  const [savedOk,  setSavedOk]  = useState(false);
+  const [saveErr,  setSaveErr]  = useState(false);
+  // null = chargement, true = DB disponible, false = DB indisponible
+  const [dbStatus, setDbStatus] = useState(null);
 
+  // Wrappers qui marquent le portefeuille comme modifié
   const dirty = (setter) => (val) => { setter(val); setIsDirty(true); };
   const setPea     = dirty(setPeaRaw);
   const setCt      = dirty(setCtRaw);
   const setHistory = dirty(setHistoryRaw);
 
-  const save = () => {
+  // Chargement initial depuis la DB
+  useEffect(() => {
+    fetch("/api/portfolio")
+      .then((r) => {
+        if (r.status === 503) throw new Error("not_configured");
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+        return r.json();
+      })
+      .then((data) => {
+        setDbStatus(true);
+        if (data && Array.isArray(data.pea)) {
+          setPeaRaw(data.pea);
+          setCtRaw(data.ct);
+          setHistoryRaw(data.history);
+        }
+      })
+      .catch((e) => {
+        setDbStatus(e.message === "not_configured" ? false : false);
+      });
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const save = useCallback(async () => {
+    setSaveErr(false);
     try {
-      localStorage.setItem("pft-pea",     JSON.stringify(pea));
-      localStorage.setItem("pft-ct",      JSON.stringify(ct));
-      localStorage.setItem("pft-history", JSON.stringify(history));
+      if (dbStatus) {
+        // Sauvegarde en base de données
+        const r = await fetch("/api/portfolio", {
+          method:  "POST",
+          headers: { "Content-Type": "application/json" },
+          body:    JSON.stringify({ pea, ct, history }),
+        });
+        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      } else {
+        // Fallback localStorage (dev local ou DB non configurée)
+        saveToStorage(pea, ct, history);
+      }
       setIsDirty(false);
       setSavedOk(true);
       setTimeout(() => setSavedOk(false), 2500);
-    } catch {}
-  };
+    } catch {
+      setSaveErr(true);
+      setTimeout(() => setSaveErr(false), 3000);
+    }
+  }, [dbStatus, pea, ct, history]);
 
   const tabBtn = (key, label) => (
     <button
@@ -60,6 +107,20 @@ export default function App() {
       {label}
     </button>
   );
+
+  const saveLabel = savedOk ? "✓ Enregistré"
+    : saveErr    ? "✕ Erreur"
+    : "💾 Enregistrer";
+
+  const saveBg = savedOk ? C.plus
+    : saveErr  ? C.moins
+    : isDirty  ? C.accent
+    : "none";
+
+  const saveBorder = savedOk ? C.plus
+    : saveErr    ? C.moins
+    : isDirty    ? C.accent
+    : C.border;
 
   return (
     <ThemeContext.Provider value={C}>
@@ -94,6 +155,19 @@ export default function App() {
               }}>
                 {isDaytime ? "☀ JOUR" : "☾ NUIT"}
               </span>
+              {/* Indicateur DB */}
+              <span style={{
+                fontSize:      10,
+                fontFamily:    "monospace",
+                letterSpacing: 1,
+                background:    dbStatus === null ? "#1e293b" : dbStatus ? "#14532d" : "#1c1917",
+                color:         dbStatus === null ? "#94a3b8"  : dbStatus ? "#4ade80" : "#78716c",
+                border:        `1px solid ${dbStatus === null ? "#334155" : dbStatus ? "#166534" : "#292524"}`,
+                borderRadius:  4,
+                padding:       "2px 7px",
+              }}>
+                {dbStatus === null ? "…" : dbStatus ? "🗄 DB" : "💻 Local"}
+              </span>
             </div>
             <div style={{ fontSize: 11, color: C.muted, letterSpacing: 3, marginTop: 2, fontFamily: "monospace" }}>
               PEA · COMPTE-TITRE
@@ -107,12 +181,12 @@ export default function App() {
             <div style={{ width: 1, height: 28, background: C.border }} />
             <button
               onClick={save}
-              disabled={!isDirty}
+              disabled={!isDirty && !saveErr}
               style={{
-                background:    savedOk ? C.plus : (isDirty ? C.accent : "none"),
-                border:        `1px solid ${savedOk ? C.plus : (isDirty ? C.accent : C.border)}`,
+                background:    saveBg,
+                border:        `1px solid ${saveBorder}`,
                 borderRadius:  8,
-                color:         savedOk || isDirty ? "#0a0f1e" : C.muted,
+                color:         (savedOk || saveErr || isDirty) ? "#0a0f1e" : C.muted,
                 padding:       "8px 18px",
                 cursor:        isDirty ? "pointer" : "default",
                 fontSize:      13,
@@ -122,9 +196,9 @@ export default function App() {
                 transition:    "background 0.2s, border-color 0.2s, color 0.2s",
               }}
             >
-              {savedOk ? "✓ Enregistré" : (isDirty ? "💾 Enregistrer" : "💾 Enregistrer")}
+              {saveLabel}
             </button>
-            {isDirty && !savedOk && (
+            {isDirty && !savedOk && !saveErr && (
               <span style={{ fontSize: 10, color: C.moins, fontFamily: "monospace" }}>
                 ● non enregistré
               </span>
