@@ -88,6 +88,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
   const [rowErrors,     setRowErrors]     = useState(new Set());
   const [newLoading,    setNewLoading]    = useState(false);
   const [newTickerErr,  setNewTickerErr]  = useState(false);
+  const [newTickerMsg,  setNewTickerMsg]  = useState("");
 
   const thStyle = {
     color: C.muted, textAlign: "left", padding: "6px 8px",
@@ -119,11 +120,13 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
     if (!ticker) return;
     setNewLoading(true);
     setNewTickerErr(false);
+    setNewTickerMsg("");
     try {
       const { nom, prixActuel } = await fetchQuote(ticker);
       setNewLine(prev => ({ ...prev, nom, prixActuel: String(prixActuel) }));
-    } catch {
+    } catch (e) {
       setNewTickerErr(true);
+      setNewTickerMsg(e.message || "Erreur réseau");
     } finally {
       setNewLoading(false);
     }
@@ -161,6 +164,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
     setNewLine(EMPTY_POS);
     setErrors({});
     setNewTickerErr(false);
+    setNewTickerMsg("");
   };
 
   const searchBtnStyle = (active) => ({
@@ -248,40 +252,48 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
             {POS_FIELDS.map((f) => (
               <td key={f.key} style={{ padding: "5px 4px" }}>
                 {f.key === "ticker" ? (
-                  <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
-                    <input
-                      value={newLine.ticker ?? ""}
-                      type="text"
-                      placeholder="AAPL"
-                      onChange={(e) => {
-                        setNewLine({ ...newLine, ticker: e.target.value.toUpperCase() });
-                        setNewTickerErr(false);
-                      }}
-                      onKeyDown={(e) => e.key === "Enter" && lookupNewTicker()}
-                      style={{ ...inputStyle(newTickerErr, C, f.width - 38) }}
-                    />
-                    <button
-                      onClick={lookupNewTicker}
-                      disabled={newLoading || !newLine.ticker?.trim()}
-                      title="Rechercher (ou appuyer sur Entrée)"
-                      style={searchBtnStyle(!newLoading && !!newLine.ticker?.trim())}
-                    >
-                      {newLoading ? "…" : "↗"}
-                    </button>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                    <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                      <input
+                        value={newLine.ticker ?? ""}
+                        type="text"
+                        placeholder="AAPL"
+                        onChange={(e) => {
+                          setNewLine({ ...newLine, ticker: e.target.value.toUpperCase() });
+                          setNewTickerErr(false);
+                          setNewTickerMsg("");
+                        }}
+                        onKeyDown={(e) => e.key === "Enter" && lookupNewTicker()}
+                        style={{ ...inputStyle(newTickerErr, C, f.width - 38) }}
+                      />
+                      <button
+                        onClick={lookupNewTicker}
+                        disabled={newLoading || !newLine.ticker?.trim()}
+                        title="Rechercher (ou appuyer sur Entrée)"
+                        style={searchBtnStyle(!newLoading && !!newLine.ticker?.trim())}
+                      >
+                        {newLoading ? "…" : "↗"}
+                      </button>
+                    </div>
+                    {newTickerErr && newTickerMsg && (
+                      <span style={{ color: C.moins, fontSize: 10, fontFamily: "monospace", lineHeight: 1.2 }}>
+                        {newTickerMsg}
+                      </span>
+                    )}
                   </div>
                 ) : f.key === "nom" ? (
                   <div style={{ position: "relative" }}>
                     <input
                       value={newLine.nom ?? ""}
                       type="text"
-                      placeholder={newLoading ? "Chargement…" : newTickerErr ? "Ticker introuvable" : "Entreprise"}
+                      placeholder={newLoading ? "Chargement…" : newTickerErr ? "Erreur" : "Entreprise"}
                       disabled={newLoading}
                       onChange={(e) => {
                         setNewLine({ ...newLine, nom: e.target.value });
                         if (errors.nom) setErrors({ ...errors, nom: false });
                       }}
                       style={{
-                        ...inputStyle(!!errors.nom || newTickerErr, C, f.width - 8),
+                        ...inputStyle(!!errors.nom, C, f.width - 8),
                         opacity: newLoading ? 0.6 : 1,
                       }}
                     />
