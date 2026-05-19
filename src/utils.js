@@ -20,8 +20,13 @@ export function derivePositions(txArr, priceCache) {
     const b = map.get(key);
 
     if (tx.type === "ACHAT") {
-      b.totalCost  += tx.nbActions * (tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0);
-      b.nbActions  += tx.nbActions;
+      // Nouveau format : prixAchat = montant total (€), frais séparés
+      // Ancien format  : nbActions * prixUnitaireEUR
+      const cost = tx.prixAchat != null
+        ? (tx.prixAchat || 0) + (tx.frais || 0)
+        : tx.nbActions * (tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0);
+      b.totalCost += cost;
+      b.nbActions += tx.nbActions;
     } else {
       const avg     = b.nbActions > 0 ? b.totalCost / b.nbActions : 0;
       b.totalCost  -= avg * tx.nbActions;

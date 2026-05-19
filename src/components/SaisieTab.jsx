@@ -57,38 +57,43 @@ const emptyTx = () => ({
   secteur:         "",
   type:            TX_TYPES.ACHAT,
   date:            new Date().toISOString().slice(0, 10),
-  nbActions:       "",
-  prixUnitaire:    "",
+  prixAchat:       "",   // montant total investi (€)
+  prixLive:        "",   // cours actuel par unité (€) — auto-rempli
+  prixLiveNative:  "",   // cours actuel en devise native — auto-rempli
   devise:          "EUR",
-  prixUnitaireEUR: "",
+  frais:           "",   // frais de courtage (€)
 });
 
 function validateTx(f) {
   const num = (v) => v === "" || isNaN(parseFloat(v));
   return {
-    nom:          !f.nom?.trim(),
-    nbActions:    num(f.nbActions) || parseFloat(f.nbActions) <= 0,
-    prixUnitaire: num(f.prixUnitaire) || parseFloat(f.prixUnitaire) < 0,
+    nom:      !f.nom?.trim(),
+    prixAchat: num(f.prixAchat) || parseFloat(f.prixAchat) <= 0,
+    prixLive:  num(f.prixLive)  || parseFloat(f.prixLive)  <= 0,
   };
 }
 
 const hasError = (e) => Object.values(e).some(Boolean);
 
 function toTransaction(f, existingId) {
-  const nb  = parseFloat(f.nbActions)       || 0;
-  const pu  = parseFloat(f.prixUnitaire)    || 0;
-  const eur = parseFloat(f.prixUnitaireEUR) || pu;
+  const montant  = parseFloat(f.prixAchat)      || 0;
+  const prixLive = parseFloat(f.prixLive)        || 0;
+  const frais    = parseFloat(f.frais)           || 0;
+  // nbActions calculé implicitement pour les agrégations du Dashboard
+  const nbActions = prixLive > 0 ? montant / prixLive : 0;
   return {
-    id:              existingId ?? crypto.randomUUID(),
-    date:            f.date || new Date().toISOString().slice(0, 10),
-    type:            f.type || TX_TYPES.ACHAT,
-    ticker:          f.ticker?.trim().toUpperCase() || "",
-    nom:             f.nom?.trim()     || "",
-    secteur:         f.secteur?.trim() || "",
-    nbActions:       nb,
-    prixUnitaire:    pu,
-    devise:          f.devise || "EUR",
-    prixUnitaireEUR: eur,
+    id:             existingId ?? crypto.randomUUID(),
+    date:           f.date || new Date().toISOString().slice(0, 10),
+    type:           f.type || TX_TYPES.ACHAT,
+    ticker:         f.ticker?.trim().toUpperCase() || "",
+    nom:            f.nom?.trim()     || "",
+    secteur:        f.secteur?.trim() || "",
+    prixAchat:      montant,
+    prixLive,
+    prixLiveNative: parseFloat(f.prixLiveNative) || prixLive,
+    devise:         f.devise || "EUR",
+    frais,
+    nbActions,
   };
 }
 
@@ -96,7 +101,7 @@ function toTransaction(f, existingId) {
 function AddForm({
   title, color, form, setForm,
   editId, onAdd, onUpdate, onCancel,
-  errors, setErrors, priceCache, setPriceCache,
+  errors, setErrors, setPriceCache,
 }) {
   const C = useTheme();
   const [loading,   setLoading]   = useState(false);
@@ -112,17 +117,19 @@ function AddForm({
     setTickerMsg("");
     try {
       const { nom, prixActuel, prixActuelEUR, devise, secteur } = await fetchQuote(ticker);
+      const eur    = prixActuelEUR ?? prixActuel;
+      const native = prixActuel;
       setForm((prev) => ({
         ...prev,
         nom,
-        prixUnitaire:    String(prixActuel),
-        prixUnitaireEUR: String(prixActuelEUR ?? prixActuel),
-        devise:          devise || "EUR",
-        secteur:         prev.secteur || secteur || "",
+        prixLive:       String(eur),
+        prixLiveNative: devise !== "EUR" ? String(native) : String(eur),
+        devise:         devise || "EUR",
+        secteur:        prev.secteur || secteur || "",
       }));
       setPriceCache((prev) => ({
         ...prev,
-        [ticker.toUpperCase()]: { prixActuelEUR: prixActuelEUR ?? prixActuel, devise: devise || "EUR", updatedAt: Date.now() },
+        [ticker.toUpperCase()]: { prixActuelEUR: eur, devise: devise || "EUR", updatedAt: Date.now() },
       }));
     } catch (e) {
       setTickerErr(true);
@@ -133,9 +140,10 @@ function AddForm({
   };
 
   const isVente    = form.type === TX_TYPES.VENTE;
-  const showEurHint = form.devise && form.devise !== "EUR" && form.prixUnitaireEUR;
-  const eur        = parseFloat(form.prixUnitaireEUR) || 0;
-  const previewVal = (parseFloat(form.nbActions) || 0) * eur;
+  const prixLiveEUR = parseFloat(form.prixLive) || 0;
+  const prixLiveNat = parseFloat(form.prixLiveNative) || 0;
+  const showNative  = form.devise && form.devise !== "EUR" && prixLiveNat > 0;
+  const previewVal  = parseFloat(form.prixAchat) || 0;
 
   return (
     <div style={{
@@ -168,14 +176,14 @@ function AddForm({
               key={t}
               onClick={() => setForm((prev) => ({ ...prev, type: t }))}
               style={{
-                background:   active ? tColor : "none",
-                border:       `1px solid ${tColor}`,
-                borderRadius: 8,
-                color:        active ? "#0a0f1e" : tColor,
-                padding:      "6px 20px",
-                fontWeight:   700,
-                cursor:       "pointer",
-                fontSize:     12,
+                background:    active ? tColor : "none",
+                border:        `1px solid ${tColor}`,
+                borderRadius:  8,
+                color:         active ? "#0a0f1e" : tColor,
+                padding:       "6px 20px",
+                fontWeight:    700,
+                cursor:        "pointer",
+                fontSize:      12,
                 letterSpacing: 1,
               }}
             >{t}</button>
@@ -184,7 +192,7 @@ function AddForm({
       </div>
 
       {/* Grille de champs */}
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(140px, 1fr))", gap: 12, marginBottom: 16 }}>
+      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
 
         {/* Ticker */}
         <div>
@@ -264,45 +272,63 @@ function AddForm({
           />
         </div>
 
-        {/* Nb actions */}
+        {/* Prix d'achat (montant total) */}
         <div>
-          <span style={label(C)}>Nb actions</span>
+          <span style={label(C)}>{isVente ? "Montant reçu (€)" : "Prix d'achat (€ total)"}</span>
           <input
-            value={form.nbActions ?? ""}
+            value={form.prixAchat ?? ""}
             type="number"
-            placeholder="10"
+            placeholder="1500.00"
             onChange={(e) => {
-              setForm({ ...form, nbActions: e.target.value });
-              if (errors.nbActions) setErrors({ ...errors, nbActions: false });
+              setForm({ ...form, prixAchat: e.target.value });
+              if (errors.prixAchat) setErrors({ ...errors, prixAchat: false });
             }}
-            style={inputStyle(!!errors.nbActions, C)}
+            style={inputStyle(!!errors.prixAchat, C)}
           />
         </div>
 
-        {/* Prix unitaire */}
+        {/* Prix live (auto-rempli, EUR + devise native) */}
         <div>
-          <span style={label(C)}>{isVente ? "Prix de vente" : "Prix d'achat"}</span>
+          <span style={label(C)}>Prix live</span>
           <input
-            value={form.prixUnitaire ?? ""}
+            value={form.prixLive ?? ""}
             type="number"
-            placeholder="150.00"
+            placeholder="Auto (↗)"
             onChange={(e) => {
               const raw = e.target.value;
               setForm((prev) => ({
                 ...prev,
-                prixUnitaire: raw,
-                // Si même devise EUR, synchroniser EUR
-                prixUnitaireEUR: prev.devise === "EUR" ? raw : prev.prixUnitaireEUR,
+                prixLive: raw,
+                prixLiveNative: prev.devise === "EUR" ? raw : prev.prixLiveNative,
               }));
-              if (errors.prixUnitaire) setErrors({ ...errors, prixUnitaire: false });
+              if (errors.prixLive) setErrors({ ...errors, prixLive: false });
             }}
-            style={inputStyle(!!errors.prixUnitaire, C)}
+            style={inputStyle(!!errors.prixLive, C)}
           />
-          {showEurHint && (
-            <span style={{ color: C.muted, fontSize: 10, fontFamily: "monospace", marginTop: 2, display: "block" }}>
-              ≈ {eur.toFixed(2)} € ({form.devise})
-            </span>
+          {prixLiveEUR > 0 && (
+            <div style={{ marginTop: 3 }}>
+              <span style={{ fontSize: 13, fontFamily: "monospace", color: C.text, fontWeight: 600 }}>
+                {fmt(prixLiveEUR)}
+              </span>
+              {showNative && (
+                <span style={{ fontSize: 10, fontFamily: "monospace", color: C.muted, marginLeft: 6 }}>
+                  {prixLiveNat.toFixed(2)} {form.devise}
+                </span>
+              )}
+            </div>
           )}
+        </div>
+
+        {/* Frais */}
+        <div>
+          <span style={label(C)}>Frais (€)</span>
+          <input
+            value={form.frais ?? ""}
+            type="number"
+            placeholder="0.00"
+            onChange={(e) => setForm({ ...form, frais: e.target.value })}
+            style={inputStyle(false, C)}
+          />
         </div>
 
       </div>
@@ -310,9 +336,9 @@ function AddForm({
       {/* Bas du formulaire */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
         <span style={{ fontSize: 12, fontFamily: "monospace", color: C.muted }}>
-          {isVente ? "Valeur cédée" : "Investissement"} :{" "}
+          {isVente ? "Montant cédé" : "Investissement total (frais inclus)"} :{" "}
           <span style={{ color: previewVal > 0 ? C.text : C.muted, fontWeight: 600 }}>
-            {previewVal > 0 ? fmt(previewVal) : "—"}
+            {previewVal > 0 ? fmt(previewVal + (parseFloat(form.frais) || 0)) : "—"}
           </span>
         </span>
         <div style={{ display: "flex", gap: 8 }}>
@@ -337,11 +363,10 @@ function TransactionLog({
   editPeaId, editCtId,
   onEditPea, onEditCt,
   onDeletePea, onDeleteCt,
-  setPeaTx, setCtTx,
   priceCache, setPriceCache,
 }) {
   const C = useTheme();
-  const [loadingIds,    setLoadingIds]    = useState(new Set());
+  const [loadingIds,      setLoadingIds]      = useState(new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
 
   const setRowLoading = (id, v) =>
@@ -399,10 +424,9 @@ function TransactionLog({
               <th style={thStyle}>Date</th>
               <th style={thStyle}>Type</th>
               <th style={thStyle}>Actif</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Qté</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Prix unit.</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Devise</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Prix EUR</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Montant (€)</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Prix live</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Frais (€)</th>
               <th style={thStyle}>Compte</th>
               <th style={{ ...thStyle, textAlign: "center" }} />
             </tr>
@@ -416,7 +440,12 @@ function TransactionLog({
               const typeColor  = isVente ? "#f87171" : "#4ade80";
               const confirming = confirmDeleteId === tx.id;
               const cached     = priceCache?.[tx.ticker?.toUpperCase()];
-              const prixActuel = cached?.prixActuelEUR;
+              const prixActuelEUR = cached?.prixActuelEUR;
+
+              // Rétrocompat : anciens champs prixUnitaireEUR / prixUnitaire
+              const prixLive    = tx.prixLive       ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
+              const prixLiveNat = tx.prixLiveNative ?? tx.prixUnitaire    ?? prixLive;
+              const showNative  = tx.devise && tx.devise !== "EUR";
 
               return (
                 <tr
@@ -431,7 +460,7 @@ function TransactionLog({
                     {tx.date}
                   </td>
 
-                  {/* Type badge */}
+                  {/* Type */}
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{
                       background:   isVente ? "#3f1f1f" : "#14532d",
@@ -446,29 +475,33 @@ function TransactionLog({
                     {tx.ticker && <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{tx.ticker}</div>}
                   </td>
 
-                  {/* Quantité */}
+                  {/* Montant */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>
-                    {tx.nbActions}
+                    {tx.prixAchat != null
+                      ? fmt(tx.prixAchat)
+                      : fmt((tx.nbActions || 0) * (tx.prixUnitaireEUR || tx.prixUnitaire || 0))}
                   </td>
 
-                  {/* Prix unitaire (devise native) */}
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
-                    {parseFloat(tx.prixUnitaire)?.toFixed(2)}
-                  </td>
-
-                  {/* Devise */}
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted, fontSize: 11 }}>
-                    {tx.devise || "EUR"}
-                  </td>
-
-                  {/* Prix EUR */}
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>
-                    {fmt(parseFloat(tx.prixUnitaireEUR) || parseFloat(tx.prixUnitaire) || 0)}
-                    {prixActuel != null && (
+                  {/* Prix live (EUR grand + devise native petit) */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace" }}>
+                    <div style={{ color: C.text, fontWeight: 600 }}>
+                      {prixLive > 0 ? fmt(prixLive) : "—"}
+                    </div>
+                    {showNative && prixLiveNat > 0 && (
                       <div style={{ fontSize: 10, color: C.muted }}>
-                        actuel: {fmt(prixActuel)}
+                        {prixLiveNat.toFixed(2)} {tx.devise}
                       </div>
                     )}
+                    {prixActuelEUR != null && (
+                      <div style={{ fontSize: 10, color: C.accent }}>
+                        live: {fmt(prixActuelEUR)}
+                      </div>
+                    )}
+                  </td>
+
+                  {/* Frais */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
+                    {tx.frais > 0 ? fmt(tx.frais) : "—"}
                   </td>
 
                   {/* Compte */}
@@ -503,7 +536,7 @@ function TransactionLog({
                         <button
                           onClick={() => refresh(tx)}
                           disabled={isLoading || !tx.ticker?.trim()}
-                          title="Rafraîchir le prix"
+                          title="Rafraîchir le prix live"
                           style={{ background: "none", border: "none", color: isLoading ? C.muted : C.accent, cursor: tx.ticker?.trim() && !isLoading ? "pointer" : "default", fontSize: 15, marginRight: 4 }}
                         >{isLoading ? "…" : "↻"}</button>
                         <button
@@ -534,12 +567,12 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
   const C = useTheme();
   const importRef = useRef(null);
 
-  const [formPea,   setFormPea]   = useState(emptyTx);
-  const [formCt,    setFormCt]    = useState(emptyTx);
-  const [editPeaId, setEditPeaId] = useState(null);
-  const [editCtId,  setEditCtId]  = useState(null);
-  const [peaErrors, setPeaErrors] = useState({});
-  const [ctErrors,  setCtErrors]  = useState({});
+  const [formPea,    setFormPea]    = useState(emptyTx);
+  const [formCt,     setFormCt]     = useState(emptyTx);
+  const [editPeaId,  setEditPeaId]  = useState(null);
+  const [editCtId,   setEditCtId]   = useState(null);
+  const [peaErrors,  setPeaErrors]  = useState({});
+  const [ctErrors,   setCtErrors]   = useState({});
   const [refreshing, setRefreshing] = useState(false);
 
   /* ── PEA ── */
@@ -556,9 +589,10 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
     if (!tx) return;
     setFormPea({
       ...tx,
-      nbActions:       String(tx.nbActions),
-      prixUnitaire:    String(tx.prixUnitaire),
-      prixUnitaireEUR: String(tx.prixUnitaireEUR),
+      prixAchat:      String(tx.prixAchat      ?? (tx.nbActions || 0) * (tx.prixUnitaireEUR || tx.prixUnitaire || 0)),
+      prixLive:       String(tx.prixLive       ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? ""),
+      prixLiveNative: String(tx.prixLiveNative ?? tx.prixUnitaire    ?? ""),
+      frais:          String(tx.frais ?? ""),
     });
     setEditPeaId(id);
     setPeaErrors({});
@@ -596,9 +630,10 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
     if (!tx) return;
     setFormCt({
       ...tx,
-      nbActions:       String(tx.nbActions),
-      prixUnitaire:    String(tx.prixUnitaire),
-      prixUnitaireEUR: String(tx.prixUnitaireEUR),
+      prixAchat:      String(tx.prixAchat      ?? (tx.nbActions || 0) * (tx.prixUnitaireEUR || tx.prixUnitaire || 0)),
+      prixLive:       String(tx.prixLive       ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? ""),
+      prixLiveNative: String(tx.prixLiveNative ?? tx.prixUnitaire    ?? ""),
+      frais:          String(tx.frais ?? ""),
     });
     setEditCtId(id);
     setCtErrors({});
@@ -622,7 +657,7 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
     if (editCtId === id) cancelCt();
   };
 
-  /* ── Rafraîchir tous les prix (met à jour priceCache uniquement) ── */
+  /* ── Rafraîchir tous les prix → priceCache uniquement ── */
   const refreshAllPrices = async () => {
     setRefreshing(true);
     const tickers = [...new Set([...peaTx, ...ctTx].map((tx) => tx.ticker?.toUpperCase()).filter(Boolean))];
@@ -660,15 +695,15 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
           setCtTx(parsed.ctTx ?? []);
           if (parsed.priceCache) setPriceCache(parsed.priceCache);
         } else if (Array.isArray(parsed.pea)) {
-          // Migration ancien format
           const migrate = (arr) => arr.map((pos) => ({
             id: crypto.randomUUID(), date: "2024-01-01",
             type: TX_TYPES.ACHAT,
             ticker: pos.ticker ?? "", nom: pos.nom ?? "", secteur: pos.secteur ?? "",
+            prixAchat:  parseFloat(pos.prixRevient) || 0,
+            prixLive:   parseFloat(pos.prixAchat)   || 0,
+            prixLiveNative: parseFloat(pos.prixAchat) || 0,
+            devise: "EUR", frais: 0,
             nbActions: parseFloat(pos.nbActions) || 0,
-            prixUnitaire: parseFloat(pos.prixAchat) || 0,
-            devise: "EUR",
-            prixUnitaireEUR: parseFloat(pos.prixAchat) || 0,
           }));
           setPeaTx(migrate(parsed.pea));
           setCtTx(migrate(parsed.ct ?? []));
@@ -699,7 +734,7 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         editId={editPeaId}
         onAdd={addPea} onUpdate={updatePea} onCancel={cancelPea}
         errors={peaErrors} setErrors={setPeaErrors}
-        priceCache={priceCache} setPriceCache={setPriceCache}
+        setPriceCache={setPriceCache}
       />
       <AddForm
         title="Compte-Titre — Nouvelle transaction" color={C.ct}
@@ -707,7 +742,7 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         editId={editCtId}
         onAdd={addCt} onUpdate={updateCt} onCancel={cancelCt}
         errors={ctErrors} setErrors={setCtErrors}
-        priceCache={priceCache} setPriceCache={setPriceCache}
+        setPriceCache={setPriceCache}
       />
 
       {/* Journal */}
@@ -716,7 +751,6 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         editPeaId={editPeaId} editCtId={editCtId}
         onEditPea={startEditPea} onEditCt={startEditCt}
         onDeletePea={deletePea}  onDeleteCt={deleteCt}
-        setPeaTx={setPeaTx} setCtTx={setCtTx}
         priceCache={priceCache} setPriceCache={setPriceCache}
       />
 
