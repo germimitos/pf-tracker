@@ -4,7 +4,8 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from "recharts";
-import { C, SECTOR_COLORS, ACCOUNTS } from "../constants";
+import { SECTOR_COLORS, ACCOUNTS } from "../constants";
+import { useTheme } from "../context/ThemeContext";
 import { fmt, pct, perf, fmtMonth } from "../utils";
 import { StatCard } from "./StatCard";
 import { CustomTooltip } from "./CustomTooltip";
@@ -38,6 +39,7 @@ function SortIndicator({ colKey, sort }) {
 }
 
 export function DashboardTab({ pea, ct, history }) {
+  const C = useTheme();
   const [sort, setSort] = useState({ key: "valeur", dir: -1 });
 
   const peaVal   = pea.reduce((s, x) => s + (parseFloat(x.valeurActuelle) || 0), 0);
@@ -179,16 +181,16 @@ export function DashboardTab({ pea, ct, history }) {
                   tabIndex={0}
                   aria-sort={sort.key === col.key ? (sort.dir === 1 ? "ascending" : "descending") : "none"}
                   style={{
-                    color: sort.key === col.key ? C.text : C.muted,
-                    textAlign: "left",
-                    padding: "8px 10px",
-                    fontSize: 11,
+                    color:        sort.key === col.key ? C.text : C.muted,
+                    textAlign:    "left",
+                    padding:      "8px 10px",
+                    fontSize:     11,
                     textTransform: "uppercase",
                     letterSpacing: 1,
                     borderBottom: `1px solid ${C.border}`,
-                    cursor: "pointer",
-                    userSelect: "none",
-                    whiteSpace: "nowrap",
+                    cursor:       "pointer",
+                    userSelect:   "none",
+                    whiteSpace:   "nowrap",
                   }}
                 >
                   {col.label}<SortIndicator colKey={col.key} sort={sort} />
@@ -207,8 +209,8 @@ export function DashboardTab({ pea, ct, history }) {
                   <td style={{ padding: "10px 10px", color: C.text, fontWeight: 600 }}>{p.nom}</td>
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{
-                      background: p.compte === ACCOUNTS.PEA ? "#14532d" : "#1e3a5f",
-                      color: p.compte === ACCOUNTS.PEA ? C.pea : C.ct,
+                      background:   p.compte === ACCOUNTS.PEA ? C.peaBadge : C.ctBadge,
+                      color:        p.compte === ACCOUNTS.PEA ? C.pea : C.ct,
                       borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
                     }}>{p.compte}</span>
                   </td>

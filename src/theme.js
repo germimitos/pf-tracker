@@ -1,0 +1,31 @@
+export const DARK = {
+  pea:      "#4ade80",
+  ct:       "#60a5fa",
+  bg:       "#0a0f1e",
+  header:   "#080d1a",
+  card:     "#111827",
+  border:   "#1e293b",
+  text:     "#e2e8f0",
+  muted:    "#64748b",
+  plus:     "#4ade80",
+  moins:    "#f87171",
+  accent:   "#818cf8",
+  peaBadge: "#14532d",
+  ctBadge:  "#1e3a5f",
+};
+
+export const LIGHT = {
+  pea:      "#16a34a",
+  ct:       "#1d4ed8",
+  bg:       "#f1f5f9",
+  header:   "#ffffff",
+  card:     "#ffffff",
+  border:   "#e2e8f0",
+  text:     "#0f172a",
+  muted:    "#64748b",
+  plus:     "#16a34a",
+  moins:    "#dc2626",
+  accent:   "#4f46e5",
+  peaBadge: "#dcfce7",
+  ctBadge:  "#dbeafe",
+};

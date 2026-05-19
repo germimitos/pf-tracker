@@ -1,6 +1,7 @@
-import { C } from "../constants";
+import { useTheme } from "../context/ThemeContext";
 
 export function StatCard({ label, value, sub, color }) {
+  const C = useTheme();
   return (
     <div style={{
       background: C.card,

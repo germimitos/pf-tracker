@@ -1,45 +1,40 @@
 import { useState, useRef } from "react";
-import { C } from "../constants";
+import { useTheme } from "../context/ThemeContext";
 
-const thStyle = {
-  color: C.muted, textAlign: "left", padding: "6px 8px",
-  fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
-};
-
-const inputStyle = (error) => ({
-  background: "#0d1526",
-  border: `1px solid ${error ? C.moins : C.border}`,
+const inputStyle = (error, C) => ({
+  background:   C.card,
+  border:       `1px solid ${error ? C.moins : C.border}`,
   borderRadius: 8,
-  color: C.text,
-  padding: "8px 12px",
-  fontSize: 13,
-  fontFamily: "monospace",
-  width: "100%",
-  boxSizing: "border-box",
-  outline: "none",
-  transition: "border-color 0.15s",
+  color:        C.text,
+  padding:      "8px 12px",
+  fontSize:     13,
+  fontFamily:   "monospace",
+  width:        "100%",
+  boxSizing:    "border-box",
+  outline:      "none",
+  transition:   "border-color 0.15s",
 });
 
 const btnStyle = (color) => ({
-  background: color,
-  border: "none",
+  background:   color,
+  border:       "none",
   borderRadius: 8,
-  color: "#0a0f1e",
-  padding: "8px 18px",
-  fontWeight: 700,
-  cursor: "pointer",
-  fontSize: 13,
+  color:        "#0a0f1e",
+  padding:      "8px 18px",
+  fontWeight:   700,
+  cursor:       "pointer",
+  fontSize:     13,
 });
 
 const outlineBtn = (color) => ({
-  background: "none",
-  border: `1px solid ${color}`,
+  background:   "none",
+  border:       `1px solid ${color}`,
   borderRadius: 8,
-  color: color,
-  padding: "8px 18px",
-  fontWeight: 600,
-  cursor: "pointer",
-  fontSize: 13,
+  color:        color,
+  padding:      "8px 18px",
+  fontWeight:   600,
+  cursor:       "pointer",
+  fontSize:     13,
 });
 
 const POS_FIELDS = [
@@ -72,6 +67,12 @@ function validateHist(h) {
 const hasError = (e) => Object.values(e).some(Boolean);
 
 function TableSection({ title, color, data, setData, newLine, setNewLine, errors, setErrors }) {
+  const C = useTheme();
+  const thStyle = {
+    color: C.muted, textAlign: "left", padding: "6px 8px",
+    fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
+  };
+
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
@@ -98,7 +99,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
                       updated[i] = { ...updated[i], [f.key]: e.target.value };
                       setData(updated);
                     }}
-                    style={inputStyle(false)}
+                    style={inputStyle(false, C)}
                   />
                 </td>
               ))}
@@ -123,7 +124,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
                     setNewLine({ ...newLine, [f.key]: e.target.value });
                     if (errors[f.key]) setErrors({ ...errors, [f.key]: false });
                   }}
-                  style={inputStyle(!!errors[f.key])}
+                  style={inputStyle(!!errors[f.key], C)}
                 />
               </td>
             ))}
@@ -151,6 +152,12 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
 }
 
 export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset }) {
+  const C = useTheme();
+  const thStyle = {
+    color: C.muted, textAlign: "left", padding: "6px 8px",
+    fontWeight: 500, fontSize: 11, textTransform: "uppercase", letterSpacing: 1,
+  };
+
   const [newPea,     setNewPea]     = useState(EMPTY_POS);
   const [newCt,      setNewCt]      = useState(EMPTY_POS);
   const [newHist,    setNewHist]    = useState(EMPTY_HIST);
@@ -239,21 +246,21 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
                       u[i] = { ...u[i], date: e.target.value };
                       setHistory(u.sort((a, b) => a.date.localeCompare(b.date)));
                     }}
-                    style={inputStyle(false)}
+                    style={inputStyle(false, C)}
                   />
                 </td>
                 <td style={{ padding: "8px" }}>
                   <input
                     type="number" value={row.pea}
                     onChange={(e) => { const u = [...history]; u[i] = { ...u[i], pea: parseFloat(e.target.value) || 0 }; setHistory(u); }}
-                    style={inputStyle(false)}
+                    style={inputStyle(false, C)}
                   />
                 </td>
                 <td style={{ padding: "8px" }}>
                   <input
                     type="number" value={row.ct}
                     onChange={(e) => { const u = [...history]; u[i] = { ...u[i], ct: parseFloat(e.target.value) || 0 }; setHistory(u); }}
-                    style={inputStyle(false)}
+                    style={inputStyle(false, C)}
                   />
                 </td>
                 <td>
@@ -271,21 +278,21 @@ export function SaisieTab({ pea, ct, history, setPea, setCt, setHistory, onReset
                 <input
                   type="month" value={newHist.date}
                   onChange={(e) => { setNewHist({ ...newHist, date: e.target.value }); if (histErrors.date) setHistErrors({ ...histErrors, date: false }); }}
-                  style={inputStyle(!!histErrors.date)}
+                  style={inputStyle(!!histErrors.date, C)}
                 />
               </td>
               <td style={{ padding: "8px" }}>
                 <input
                   type="number" placeholder="0" value={newHist.pea}
                   onChange={(e) => { setNewHist({ ...newHist, pea: e.target.value }); if (histErrors.pea) setHistErrors({ ...histErrors, pea: false }); }}
-                  style={inputStyle(!!histErrors.pea)}
+                  style={inputStyle(!!histErrors.pea, C)}
                 />
               </td>
               <td style={{ padding: "8px" }}>
                 <input
                   type="number" placeholder="0" value={newHist.ct}
                   onChange={(e) => { setNewHist({ ...newHist, ct: e.target.value }); if (histErrors.ct) setHistErrors({ ...histErrors, ct: false }); }}
-                  style={inputStyle(!!histErrors.ct)}
+                  style={inputStyle(!!histErrors.ct, C)}
                 />
               </td>
               <td>
