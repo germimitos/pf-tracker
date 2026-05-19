@@ -84,8 +84,10 @@ function derivedVal(row) {
 
 function TableSection({ title, color, data, setData, newLine, setNewLine, errors, setErrors }) {
   const C = useTheme();
-  const [loadingRows, setLoadingRows] = useState(new Set());
-  const [newLoading,  setNewLoading]  = useState(false);
+  const [loadingRows,   setLoadingRows]   = useState(new Set());
+  const [rowErrors,     setRowErrors]     = useState(new Set());
+  const [newLoading,    setNewLoading]    = useState(false);
+  const [newTickerErr,  setNewTickerErr]  = useState(false);
 
   const thStyle = {
     color: C.muted, textAlign: "left", padding: "6px 8px",
@@ -94,27 +96,37 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
 
   const setRowLoading = (i, v) =>
     setLoadingRows(prev => { const s = new Set(prev); v ? s.add(i) : s.delete(i); return s; });
+  const setRowError = (i, v) =>
+    setRowErrors(prev => { const s = new Set(prev); v ? s.add(i) : s.delete(i); return s; });
 
   const refreshRow = async (i) => {
     const ticker = data[i]?.ticker?.trim();
     if (!ticker) return;
     setRowLoading(i, true);
+    setRowError(i, false);
     try {
       const quote = await fetchQuote(ticker);
       setData(prev => { const u = [...prev]; u[i] = applyQuote(u[i], quote); return u; });
-    } catch {}
-    setRowLoading(i, false);
+    } catch {
+      setRowError(i, true);
+    } finally {
+      setRowLoading(i, false);
+    }
   };
 
   const lookupNewTicker = async () => {
     const ticker = newLine.ticker?.trim();
     if (!ticker) return;
     setNewLoading(true);
+    setNewTickerErr(false);
     try {
       const { nom, prixActuel } = await fetchQuote(ticker);
       setNewLine(prev => ({ ...prev, nom, prixActuel: String(prixActuel) }));
-    } catch {}
-    setNewLoading(false);
+    } catch {
+      setNewTickerErr(true);
+    } finally {
+      setNewLoading(false);
+    }
   };
 
   const updateRow = (i, key, value) => {
@@ -148,7 +160,21 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
     }]);
     setNewLine(EMPTY_POS);
     setErrors({});
+    setNewTickerErr(false);
   };
+
+  const searchBtnStyle = (active) => ({
+    background:   active ? C.accent : C.border,
+    border:       "none",
+    borderRadius: 6,
+    color:        active ? "#fff" : C.muted,
+    cursor:       active ? "pointer" : "default",
+    fontSize:     11,
+    padding:      "0 7px",
+    height:       28,
+    flexShrink:   0,
+    fontWeight:   700,
+  });
 
   const previewVal = (parseFloat(newLine.nbActions) || 0) * (parseFloat(newLine.prixActuel) || 0);
 
@@ -158,7 +184,7 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
         <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>{title}</span>
       </div>
-      <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 780 }}>
+      <table style={{ borderCollapse: "collapse", fontSize: 12, minWidth: 820 }}>
         <thead>
           <tr>
             {POS_FIELDS.map((f) => <th key={f.key} style={{ ...thStyle, width: f.width }}>{f.label}</th>)}
@@ -167,8 +193,10 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
           </tr>
         </thead>
         <tbody>
+          {/* Lignes existantes */}
           {data.map((row, i) => {
-            const loading = loadingRows.has(i);
+            const loading  = loadingRows.has(i);
+            const hasErr   = rowErrors.has(i);
             return (
               <tr key={row.nom + (row.secteur || "")} style={{ borderTop: `1px solid ${C.border}` }}>
                 {POS_FIELDS.map((f) => (
@@ -178,12 +206,16 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
                       type={f.type}
                       disabled={f.key === "nom" && loading}
                       placeholder={f.key === "nom" && loading ? "Chargement…" : ""}
+                      title={f.key === "ticker" && hasErr ? "Ticker non trouvé" : undefined}
                       onChange={(e) => {
                         const val = f.key === "ticker" ? e.target.value.toUpperCase() : e.target.value;
+                        if (f.key === "ticker") setRowError(i, false);
                         updateRow(i, f.key, val);
                       }}
-                      onBlur={f.key === "ticker" ? () => refreshRow(i) : undefined}
-                      style={{ ...inputStyle(false, C, f.width - 8), opacity: (f.key === "nom" && loading) ? 0.5 : 1 }}
+                      style={{
+                        ...inputStyle(f.key === "ticker" && hasErr, C, f.width - 8),
+                        opacity: (f.key === "nom" && loading) ? 0.5 : 1,
+                      }}
                     />
                   </td>
                 ))}
@@ -194,14 +226,14 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
                   <button
                     onClick={() => refreshRow(i)}
                     disabled={loading || !row.ticker?.trim()}
-                    title="Rafraîchir le prix"
+                    title={hasErr ? "Ticker non trouvé — réessayer" : "Rafraîchir le prix"}
                     style={{
                       background: "none", border: "none",
-                      color: row.ticker?.trim() ? C.accent : C.muted,
+                      color: hasErr ? C.moins : (row.ticker?.trim() ? C.accent : C.muted),
                       cursor: row.ticker?.trim() && !loading ? "pointer" : "default",
                       fontSize: 15, marginRight: 2, opacity: loading ? 0.4 : 1,
                     }}
-                  >{loading ? "…" : "↻"}</button>
+                  >{loading ? "…" : (hasErr ? "⚠" : "↻")}</button>
                   <button
                     onClick={() => setData(data.filter((_, idx) => idx !== i))}
                     style={{ background: "none", border: "none", color: C.moins, cursor: "pointer", fontSize: 16 }}
@@ -215,22 +247,57 @@ function TableSection({ title, color, data, setData, newLine, setNewLine, errors
           <tr style={{ borderTop: `1px solid ${C.border}` }}>
             {POS_FIELDS.map((f) => (
               <td key={f.key} style={{ padding: "5px 4px" }}>
-                <input
-                  value={newLine[f.key] ?? ""}
-                  type={f.type}
-                  placeholder={f.key === "nom" && newLoading ? "Chargement…" : f.placeholder}
-                  disabled={f.key === "nom" && newLoading}
-                  onChange={(e) => {
-                    const val = f.key === "ticker" ? e.target.value.toUpperCase() : e.target.value;
-                    setNewLine({ ...newLine, [f.key]: val });
-                    if (errors[f.key]) setErrors({ ...errors, [f.key]: false });
-                  }}
-                  onBlur={f.key === "ticker" ? lookupNewTicker : undefined}
-                  style={{
-                    ...inputStyle(!!errors[f.key], C, f.width - 8),
-                    opacity: (f.key === "nom" && newLoading) ? 0.5 : 1,
-                  }}
-                />
+                {f.key === "ticker" ? (
+                  <div style={{ display: "flex", gap: 3, alignItems: "center" }}>
+                    <input
+                      value={newLine.ticker ?? ""}
+                      type="text"
+                      placeholder="AAPL"
+                      onChange={(e) => {
+                        setNewLine({ ...newLine, ticker: e.target.value.toUpperCase() });
+                        setNewTickerErr(false);
+                      }}
+                      onKeyDown={(e) => e.key === "Enter" && lookupNewTicker()}
+                      style={{ ...inputStyle(newTickerErr, C, f.width - 36) }}
+                    />
+                    <button
+                      onClick={lookupNewTicker}
+                      disabled={newLoading || !newLine.ticker?.trim()}
+                      title="Rechercher (ou appuyer sur Entrée)"
+                      style={searchBtnStyle(!newLoading && !!newLine.ticker?.trim())}
+                    >
+                      {newLoading ? "…" : "↗"}
+                    </button>
+                  </div>
+                ) : f.key === "nom" ? (
+                  <div style={{ position: "relative" }}>
+                    <input
+                      value={newLine.nom ?? ""}
+                      type="text"
+                      placeholder={newLoading ? "Chargement…" : newTickerErr ? "Ticker introuvable" : "Entreprise"}
+                      disabled={newLoading}
+                      onChange={(e) => {
+                        setNewLine({ ...newLine, nom: e.target.value });
+                        if (errors.nom) setErrors({ ...errors, nom: false });
+                      }}
+                      style={{
+                        ...inputStyle(!!errors.nom || newTickerErr, C, f.width - 8),
+                        opacity: newLoading ? 0.6 : 1,
+                      }}
+                    />
+                  </div>
+                ) : (
+                  <input
+                    value={newLine[f.key] ?? ""}
+                    type={f.type}
+                    placeholder={f.placeholder}
+                    onChange={(e) => {
+                      setNewLine({ ...newLine, [f.key]: e.target.value });
+                      if (errors[f.key]) setErrors({ ...errors, [f.key]: false });
+                    }}
+                    style={{ ...inputStyle(!!errors[f.key], C, f.width - 8) }}
+                  />
+                )}
               </td>
             ))}
             <td style={{ padding: "5px 8px", color: C.muted, fontFamily: "monospace", whiteSpace: "nowrap" }}>
