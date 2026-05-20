@@ -20,13 +20,22 @@ export function derivePositions(txArr, priceCache) {
     const b = map.get(key);
 
     if (tx.type === "ACHAT") {
-      // Nouveau format : prixAchat = montant total (€), frais séparés
-      // Ancien format  : nbActions * prixUnitaireEUR
-      const cost = tx.prixAchat != null
-        ? (tx.prixAchat || 0) + (tx.frais || 0)
-        : tx.nbActions * (tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0);
+      let cost, shares;
+      if (tx.qte != null) {
+        // Format actuel : qte × prixAchat (par action) + frais
+        cost   = (tx.qte * (tx.prixAchat || 0)) + (tx.frais || 0);
+        shares = tx.qte;
+      } else if (tx.prixLive != null) {
+        // Format intermédiaire : prixAchat = montant total, prixLive = par action
+        cost   = (tx.prixAchat || 0) + (tx.frais || 0);
+        shares = tx.nbActions;
+      } else {
+        // Format v1 : nbActions × prixUnitaireEUR
+        cost   = tx.nbActions * (tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0);
+        shares = tx.nbActions;
+      }
       b.totalCost += cost;
-      b.nbActions += tx.nbActions;
+      b.nbActions += shares;
     } else {
       const avg     = b.nbActions > 0 ? b.totalCost / b.nbActions : 0;
       b.totalCost  -= avg * tx.nbActions;

@@ -52,52 +52,55 @@ const outlineBtn = (color, disabled) => ({
 
 /* ── valeur par défaut d'une transaction ────────────────────── */
 const emptyTx = () => ({
-  ticker:          "",
-  nom:             "",
-  secteur:         "",
-  type:            TX_TYPES.ACHAT,
-  date:            new Date().toISOString().slice(0, 10),
-  prixAchat:       "",   // montant total investi (€)
-  prixLive:        "",   // cours actuel par unité (€) — auto-rempli
-  prixLiveNative:  "",   // cours actuel en devise native — auto-rempli
-  devise:          "EUR",
-  frais:           "",   // frais de courtage (€)
+  ticker:    "",
+  nom:       "",
+  secteur:   "",
+  type:      TX_TYPES.ACHAT,
+  date:      new Date().toISOString().slice(0, 10),
+  qte:       "",          // nombre d'actions
+  prixAchat: "",          // prix d'achat par action (€)
+  prixActuel: "",         // prix actuel par action (€, auto-rempli)
+  prixActuelNative: "",   // prix actuel en devise native (affiché sous prixActuel)
+  devise:    "EUR",
+  frais:     "",
 });
 
 function validateTx(f) {
   const num = (v) => v === "" || isNaN(parseFloat(v));
   return {
-    nom:      !f.nom?.trim(),
-    prixAchat: num(f.prixAchat) || parseFloat(f.prixAchat) <= 0,
-    prixLive:  num(f.prixLive)  || parseFloat(f.prixLive)  <= 0,
+    nom:       !f.nom?.trim(),
+    qte:       num(f.qte) || parseFloat(f.qte) <= 0,
+    prixAchat: num(f.prixAchat) || parseFloat(f.prixAchat) < 0,
   };
 }
 
 const hasError = (e) => Object.values(e).some(Boolean);
 
 function toTransaction(f, existingId) {
-  const montant  = parseFloat(f.prixAchat)      || 0;
-  const prixLive = parseFloat(f.prixLive)        || 0;
-  const frais    = parseFloat(f.frais)           || 0;
-  // nbActions calculé implicitement pour les agrégations du Dashboard
-  const nbActions = prixLive > 0 ? montant / prixLive : 0;
+  const qte        = parseFloat(f.qte)              || 0;
+  const prixAchat  = parseFloat(f.prixAchat)        || 0;
+  const prixActuel = parseFloat(f.prixActuel)       || 0;
+  const frais      = parseFloat(f.frais)            || 0;
   return {
-    id:             existingId ?? crypto.randomUUID(),
-    date:           f.date || new Date().toISOString().slice(0, 10),
-    type:           f.type || TX_TYPES.ACHAT,
-    ticker:         f.ticker?.trim().toUpperCase() || "",
-    nom:            f.nom?.trim()     || "",
-    secteur:        f.secteur?.trim() || "",
-    prixAchat:      montant,
-    prixLive,
-    prixLiveNative: parseFloat(f.prixLiveNative) || prixLive,
-    devise:         f.devise || "EUR",
+    id:               existingId ?? crypto.randomUUID(),
+    date:             f.date || new Date().toISOString().slice(0, 10),
+    type:             f.type || TX_TYPES.ACHAT,
+    ticker:           f.ticker?.trim().toUpperCase() || "",
+    nom:              f.nom?.trim()     || "",
+    secteur:          f.secteur?.trim() || "",
+    qte,
+    prixAchat,
+    prixActuel,
+    prixActuelNative: parseFloat(f.prixActuelNative) || prixActuel,
+    devise:           f.devise || "EUR",
     frais,
-    nbActions,
+    // alias pour compatibilité avec derivePositions v1/v2
+    nbActions:        qte,
+    prixUnitaireEUR:  prixAchat,
   };
 }
 
-/* ── Formulaire de saisie (ajouter ou modifier) ─────────────── */
+/* ── Formulaire de saisie ────────────────────────────────────── */
 function AddForm({
   title, color, form, setForm,
   editId, onAdd, onUpdate, onCancel,
@@ -122,10 +125,10 @@ function AddForm({
       setForm((prev) => ({
         ...prev,
         nom,
-        prixLive:       String(eur),
-        prixLiveNative: devise !== "EUR" ? String(native) : String(eur),
-        devise:         devise || "EUR",
-        secteur:        prev.secteur || secteur || "",
+        prixActuel:       String(eur),
+        prixActuelNative: devise !== "EUR" ? String(native) : String(eur),
+        devise:           devise || "EUR",
+        secteur:          prev.secteur || secteur || "",
       }));
       setPriceCache((prev) => ({
         ...prev,
@@ -139,11 +142,13 @@ function AddForm({
     }
   };
 
-  const isVente    = form.type === TX_TYPES.VENTE;
-  const prixLiveEUR = parseFloat(form.prixLive) || 0;
-  const prixLiveNat = parseFloat(form.prixLiveNative) || 0;
-  const showNative  = form.devise && form.devise !== "EUR" && prixLiveNat > 0;
-  const previewVal  = parseFloat(form.prixAchat) || 0;
+  const isVente   = form.type === TX_TYPES.VENTE;
+  const qte       = parseFloat(form.qte)       || 0;
+  const pa        = parseFloat(form.prixAchat) || 0;
+  const pc        = parseFloat(form.prixActuel)|| 0;
+  const investi   = qte * pa + (parseFloat(form.frais) || 0);
+  const valActuel = qte * pc;
+  const showNative = form.devise && form.devise !== "EUR" && parseFloat(form.prixActuelNative) > 0;
 
   return (
     <div style={{
@@ -153,7 +158,7 @@ function AddForm({
       padding:      20,
       marginBottom: 20,
     }}>
-      {/* Titre + badge édition */}
+      {/* Titre */}
       <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
         <div style={{ width: 10, height: 10, borderRadius: "50%", background: color }} />
         <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>{title}</span>
@@ -191,7 +196,7 @@ function AddForm({
         })}
       </div>
 
-      {/* Grille de champs */}
+      {/* Grille */}
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(150px, 1fr))", gap: 12, marginBottom: 16 }}>
 
         {/* Ticker */}
@@ -204,8 +209,7 @@ function AddForm({
               placeholder="AAPL"
               onChange={(e) => {
                 setForm({ ...form, ticker: e.target.value.toUpperCase() });
-                setTickerErr(false);
-                setTickerMsg("");
+                setTickerErr(false); setTickerMsg("");
               }}
               onKeyDown={(e) => e.key === "Enter" && lookup()}
               style={{ ...inputStyle(tickerErr, C), flex: 1, minWidth: 0 }}
@@ -216,15 +220,10 @@ function AddForm({
               title="Rechercher (ou Entrée)"
               style={{
                 background:   (!loading && form.ticker?.trim()) ? color : C.border,
-                border:       "none",
-                borderRadius: 8,
+                border:       "none", borderRadius: 8,
                 color:        (!loading && form.ticker?.trim()) ? "#0a0f1e" : C.muted,
                 cursor:       (!loading && form.ticker?.trim()) ? "pointer" : "default",
-                fontSize:     11,
-                padding:      "0 8px",
-                height:       36,
-                fontWeight:   700,
-                flexShrink:   0,
+                fontSize: 11, padding: "0 8px", height: 36, fontWeight: 700, flexShrink: 0,
               }}
             >{loading ? "…" : "↗"}</button>
           </div>
@@ -272,13 +271,28 @@ function AddForm({
           />
         </div>
 
-        {/* Prix d'achat (montant total) */}
+        {/* Qté */}
         <div>
-          <span style={label(C)}>{isVente ? "Montant reçu (€)" : "Prix d'achat (€ total)"}</span>
+          <span style={label(C)}>Qté</span>
+          <input
+            value={form.qte ?? ""}
+            type="number"
+            placeholder="10"
+            onChange={(e) => {
+              setForm({ ...form, qte: e.target.value });
+              if (errors.qte) setErrors({ ...errors, qte: false });
+            }}
+            style={inputStyle(!!errors.qte, C)}
+          />
+        </div>
+
+        {/* Prix à l'achat par action */}
+        <div>
+          <span style={label(C)}>{isVente ? "Prix de vente / action (€)" : "Prix d'achat / action (€)"}</span>
           <input
             value={form.prixAchat ?? ""}
             type="number"
-            placeholder="1500.00"
+            placeholder="150.00"
             onChange={(e) => {
               setForm({ ...form, prixAchat: e.target.value });
               if (errors.prixAchat) setErrors({ ...errors, prixAchat: false });
@@ -287,35 +301,27 @@ function AddForm({
           />
         </div>
 
-        {/* Prix live (auto-rempli, EUR + devise native) */}
+        {/* Prix actuel par action — auto-rempli depuis Yahoo */}
         <div>
-          <span style={label(C)}>Prix live</span>
+          <span style={label(C)}>Prix actuel / action (€)</span>
           <input
-            value={form.prixLive ?? ""}
+            value={form.prixActuel ?? ""}
             type="number"
             placeholder="Auto (↗)"
             onChange={(e) => {
               const raw = e.target.value;
               setForm((prev) => ({
                 ...prev,
-                prixLive: raw,
-                prixLiveNative: prev.devise === "EUR" ? raw : prev.prixLiveNative,
+                prixActuel:       raw,
+                prixActuelNative: prev.devise === "EUR" ? raw : prev.prixActuelNative,
               }));
-              if (errors.prixLive) setErrors({ ...errors, prixLive: false });
             }}
-            style={inputStyle(!!errors.prixLive, C)}
+            style={inputStyle(false, C)}
           />
-          {prixLiveEUR > 0 && (
-            <div style={{ marginTop: 3 }}>
-              <span style={{ fontSize: 13, fontFamily: "monospace", color: C.text, fontWeight: 600 }}>
-                {fmt(prixLiveEUR)}
-              </span>
-              {showNative && (
-                <span style={{ fontSize: 10, fontFamily: "monospace", color: C.muted, marginLeft: 6 }}>
-                  {prixLiveNat.toFixed(2)} {form.devise}
-                </span>
-              )}
-            </div>
+          {showNative && (
+            <span style={{ fontSize: 10, fontFamily: "monospace", color: C.muted, marginTop: 3, display: "block" }}>
+              {parseFloat(form.prixActuelNative).toFixed(2)} {form.devise}
+            </span>
           )}
         </div>
 
@@ -333,18 +339,34 @@ function AddForm({
 
       </div>
 
-      {/* Bas du formulaire */}
+      {/* Résumé + boutons */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8 }}>
-        <span style={{ fontSize: 12, fontFamily: "monospace", color: C.muted }}>
-          {isVente ? "Montant cédé" : "Investissement total (frais inclus)"} :{" "}
-          <span style={{ color: previewVal > 0 ? C.text : C.muted, fontWeight: 600 }}>
-            {previewVal > 0 ? fmt(previewVal + (parseFloat(form.frais) || 0)) : "—"}
+        <div style={{ display: "flex", gap: 20, fontSize: 12, fontFamily: "monospace" }}>
+          <span style={{ color: C.muted }}>
+            Investi :{" "}
+            <span style={{ color: investi > 0 ? C.text : C.muted, fontWeight: 600 }}>
+              {investi > 0 ? fmt(investi) : "—"}
+            </span>
           </span>
-        </span>
-        <div style={{ display: "flex", gap: 8 }}>
-          {isEditing && (
-            <button onClick={onCancel} style={outlineBtn(C.muted)}>Annuler</button>
+          {valActuel > 0 && (
+            <span style={{ color: C.muted }}>
+              Valeur actuelle :{" "}
+              <span style={{
+                fontWeight: 600,
+                color: valActuel >= investi ? C.plus : C.moins,
+              }}>
+                {fmt(valActuel)}
+              </span>
+              {investi > 0 && (
+                <span style={{ color: valActuel >= investi ? C.plus : C.moins, marginLeft: 6 }}>
+                  ({valActuel >= investi ? "+" : ""}{((valActuel - investi) / investi * 100).toFixed(1)}%)
+                </span>
+              )}
+            </span>
           )}
+        </div>
+        <div style={{ display: "flex", gap: 8 }}>
+          {isEditing && <button onClick={onCancel} style={outlineBtn(C.muted)}>Annuler</button>}
           <button
             onClick={isEditing ? onUpdate : onAdd}
             style={btnStyle(isVente ? C.moins : color)}
@@ -424,9 +446,11 @@ function TransactionLog({
               <th style={thStyle}>Date</th>
               <th style={thStyle}>Type</th>
               <th style={thStyle}>Actif</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Montant (€)</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Prix live</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Frais (€)</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Qté</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Prix achat/action</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Prix actuel/action</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>Frais</th>
+              <th style={{ ...thStyle, textAlign: "right" }}>P&L</th>
               <th style={thStyle}>Compte</th>
               <th style={{ ...thStyle, textAlign: "center" }} />
             </tr>
@@ -439,13 +463,18 @@ function TransactionLog({
               const isVente    = tx.type === TX_TYPES.VENTE;
               const typeColor  = isVente ? "#f87171" : "#4ade80";
               const confirming = confirmDeleteId === tx.id;
-              const cached     = priceCache?.[tx.ticker?.toUpperCase()];
-              const prixActuelEUR = cached?.prixActuelEUR;
 
-              // Rétrocompat : anciens champs prixUnitaireEUR / prixUnitaire
-              const prixLive    = tx.prixLive       ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
-              const prixLiveNat = tx.prixLiveNative ?? tx.prixUnitaire    ?? prixLive;
-              const showNative  = tx.devise && tx.devise !== "EUR";
+              // Rétrocompat : plusieurs formats possibles
+              const qte       = tx.qte      ?? tx.nbActions ?? 0;
+              const pa        = tx.prixAchat ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
+              const cached    = priceCache?.[tx.ticker?.toUpperCase()];
+              const pcEUR     = tx.prixActuel ?? cached?.prixActuelEUR ?? 0;
+              const pcNative  = tx.prixActuelNative ?? tx.prixLiveNative ?? tx.prixUnitaire ?? pcEUR;
+              const showNat   = tx.devise && tx.devise !== "EUR";
+              const investi   = qte * pa + (tx.frais || 0);
+              const valActuel = qte * (cached?.prixActuelEUR ?? pcEUR);
+              const pl        = valActuel - investi;
+              const plPct     = investi > 0 ? (pl / investi) * 100 : 0;
 
               return (
                 <tr
@@ -455,12 +484,10 @@ function TransactionLog({
                     background:   isEdit ? `${compte === ACCOUNTS.PEA ? "#4ade8011" : "#60a5fa11"}` : "transparent",
                   }}
                 >
-                  {/* Date */}
                   <td style={{ padding: "10px 10px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>
                     {tx.date}
                   </td>
 
-                  {/* Type */}
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{
                       background:   isVente ? "#3f1f1f" : "#14532d",
@@ -469,39 +496,58 @@ function TransactionLog({
                     }}>{tx.type}</span>
                   </td>
 
-                  {/* Actif */}
                   <td style={{ padding: "10px 10px" }}>
                     <div style={{ fontWeight: 600, color: C.text }}>{tx.nom || tx.ticker}</div>
                     {tx.ticker && <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{tx.ticker}</div>}
                   </td>
 
-                  {/* Montant */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>
-                    {tx.prixAchat != null
-                      ? fmt(tx.prixAchat)
-                      : fmt((tx.nbActions || 0) * (tx.prixUnitaireEUR || tx.prixUnitaire || 0))}
+                    {qte % 1 === 0 ? qte : qte.toFixed(3)}
                   </td>
 
-                  {/* Prix live (EUR grand + devise native petit) */}
+                  {/* Prix achat / action */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
+                    {pa > 0 ? fmt(pa) : "—"}
+                  </td>
+
+                  {/* Prix actuel / action (EUR + devise native) */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace" }}>
-                    <div style={{ color: C.text, fontWeight: 600 }}>
-                      {prixLive > 0 ? fmt(prixLive) : "—"}
-                    </div>
-                    {showNative && prixLiveNat > 0 && (
-                      <div style={{ fontSize: 10, color: C.muted }}>
-                        {prixLiveNat.toFixed(2)} {tx.devise}
-                      </div>
-                    )}
-                    {prixActuelEUR != null && (
-                      <div style={{ fontSize: 10, color: C.accent }}>
-                        live: {fmt(prixActuelEUR)}
-                      </div>
-                    )}
+                    {cached?.prixActuelEUR != null ? (
+                      <>
+                        <div style={{ color: C.text, fontWeight: 600 }}>{fmt(cached.prixActuelEUR)}</div>
+                        {showNat && pcNative > 0 && (
+                          <div style={{ fontSize: 10, color: C.muted }}>
+                            {pcNative.toFixed(2)} {tx.devise}
+                          </div>
+                        )}
+                      </>
+                    ) : pcEUR > 0 ? (
+                      <>
+                        <div style={{ color: C.muted }}>{fmt(pcEUR)}</div>
+                        {showNat && pcNative > 0 && (
+                          <div style={{ fontSize: 10, color: C.muted }}>
+                            {pcNative.toFixed(2)} {tx.devise}
+                          </div>
+                        )}
+                      </>
+                    ) : "—"}
                   </td>
 
                   {/* Frais */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
                     {tx.frais > 0 ? fmt(tx.frais) : "—"}
+                  </td>
+
+                  {/* P&L */}
+                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace" }}>
+                    {investi > 0 && valActuel > 0 ? (
+                      <>
+                        <div style={{ fontWeight: 700, color: pl >= 0 ? C.plus : C.moins }}>{fmt(pl)}</div>
+                        <div style={{ fontSize: 10, color: pl >= 0 ? C.plus : C.moins }}>
+                          {pl >= 0 ? "+" : ""}{plPct.toFixed(1)}%
+                        </div>
+                      </>
+                    ) : "—"}
                   </td>
 
                   {/* Compte */}
@@ -536,7 +582,7 @@ function TransactionLog({
                         <button
                           onClick={() => refresh(tx)}
                           disabled={isLoading || !tx.ticker?.trim()}
-                          title="Rafraîchir le prix live"
+                          title="Rafraîchir le prix actuel"
                           style={{ background: "none", border: "none", color: isLoading ? C.muted : C.accent, cursor: tx.ticker?.trim() && !isLoading ? "pointer" : "default", fontSize: 15, marginRight: 4 }}
                         >{isLoading ? "…" : "↻"}</button>
                         <button
@@ -587,13 +633,11 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
   const startEditPea = (id) => {
     const tx = peaTx.find((t) => t.id === id);
     if (!tx) return;
-    setFormPea({
-      ...tx,
-      prixAchat:      String(tx.prixAchat      ?? (tx.nbActions || 0) * (tx.prixUnitaireEUR || tx.prixUnitaire || 0)),
-      prixLive:       String(tx.prixLive       ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? ""),
-      prixLiveNative: String(tx.prixLiveNative ?? tx.prixUnitaire    ?? ""),
-      frais:          String(tx.frais ?? ""),
-    });
+    const qte       = tx.qte      ?? tx.nbActions ?? 0;
+    const pa        = tx.prixAchat ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
+    const pc        = tx.prixActuel ?? tx.prixLive ?? tx.prixUnitaireEUR ?? 0;
+    const pcNative  = tx.prixActuelNative ?? tx.prixLiveNative ?? tx.prixUnitaire ?? pc;
+    setFormPea({ ...tx, qte: String(qte), prixAchat: String(pa), prixActuel: String(pc), prixActuelNative: String(pcNative), frais: String(tx.frais ?? "") });
     setEditPeaId(id);
     setPeaErrors({});
     setEditCtId(null);
@@ -628,13 +672,11 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
   const startEditCt = (id) => {
     const tx = ctTx.find((t) => t.id === id);
     if (!tx) return;
-    setFormCt({
-      ...tx,
-      prixAchat:      String(tx.prixAchat      ?? (tx.nbActions || 0) * (tx.prixUnitaireEUR || tx.prixUnitaire || 0)),
-      prixLive:       String(tx.prixLive       ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? ""),
-      prixLiveNative: String(tx.prixLiveNative ?? tx.prixUnitaire    ?? ""),
-      frais:          String(tx.frais ?? ""),
-    });
+    const qte      = tx.qte      ?? tx.nbActions ?? 0;
+    const pa       = tx.prixAchat ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
+    const pc       = tx.prixActuel ?? tx.prixLive ?? tx.prixUnitaireEUR ?? 0;
+    const pcNative = tx.prixActuelNative ?? tx.prixLiveNative ?? tx.prixUnitaire ?? pc;
+    setFormCt({ ...tx, qte: String(qte), prixAchat: String(pa), prixActuel: String(pc), prixActuelNative: String(pcNative), frais: String(tx.frais ?? "") });
     setEditCtId(id);
     setCtErrors({});
     setEditPeaId(null);
@@ -657,7 +699,7 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
     if (editCtId === id) cancelCt();
   };
 
-  /* ── Rafraîchir tous les prix → priceCache uniquement ── */
+  /* ── Rafraîchir tous les prix ── */
   const refreshAllPrices = async () => {
     setRefreshing(true);
     const tickers = [...new Set([...peaTx, ...ctTx].map((tx) => tx.ticker?.toUpperCase()).filter(Boolean))];
@@ -699,11 +741,12 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
             id: crypto.randomUUID(), date: "2024-01-01",
             type: TX_TYPES.ACHAT,
             ticker: pos.ticker ?? "", nom: pos.nom ?? "", secteur: pos.secteur ?? "",
-            prixAchat:  parseFloat(pos.prixRevient) || 0,
-            prixLive:   parseFloat(pos.prixAchat)   || 0,
-            prixLiveNative: parseFloat(pos.prixAchat) || 0,
+            qte:        parseFloat(pos.nbActions)  || 0,
+            prixAchat:  parseFloat(pos.prixAchat)  || 0,
+            prixActuel: parseFloat(pos.prixActuel) || 0,
             devise: "EUR", frais: 0,
             nbActions: parseFloat(pos.nbActions) || 0,
+            prixUnitaireEUR: parseFloat(pos.prixAchat) || 0,
           }));
           setPeaTx(migrate(parsed.pea));
           setCtTx(migrate(parsed.ct ?? []));
@@ -720,14 +763,12 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
 
   return (
     <div>
-      {/* Rafraîchir tout */}
       <div style={{ display: "flex", justifyContent: "flex-end", marginBottom: 16 }}>
         <button onClick={refreshAllPrices} disabled={refreshing} style={outlineBtn(C.accent, refreshing)}>
           {refreshing ? "Mise à jour…" : "↻ Rafraîchir tous les prix"}
         </button>
       </div>
 
-      {/* Formulaires */}
       <AddForm
         title="PEA — Nouvelle transaction" color={C.pea}
         form={formPea} setForm={setFormPea}
@@ -745,7 +786,6 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         setPriceCache={setPriceCache}
       />
 
-      {/* Journal */}
       <TransactionLog
         peaTx={peaTx} ctTx={ctTx}
         editPeaId={editPeaId} editCtId={editCtId}
@@ -754,7 +794,6 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         priceCache={priceCache} setPriceCache={setPriceCache}
       />
 
-      {/* Export / Import */}
       <div style={{ marginTop: 24, display: "flex", gap: 8, flexWrap: "wrap" }}>
         <button onClick={handleExport} style={outlineBtn(C.accent)}>Exporter JSON</button>
         <button onClick={() => importRef.current?.click()} style={outlineBtn(C.muted)}>Importer JSON</button>
