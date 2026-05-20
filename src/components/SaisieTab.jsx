@@ -128,7 +128,7 @@ function AddForm({
         prixActuel:       String(eur),
         prixActuelNative: devise !== "EUR" ? String(native) : String(eur),
         devise:           devise || "EUR",
-        secteur:          prev.secteur || secteur || "",
+        secteur:          secteur || prev.secteur || "",
       }));
       setPriceCache((prev) => ({
         ...prev,
