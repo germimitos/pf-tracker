@@ -257,13 +257,20 @@ export default function App() {
         </div>
 
         <div style={{ padding: "32px" }}>
-          {tab === "dashboard"
-            ? <DashboardTab pea={peaPositions} ct={ctPositions} />
-            : <SaisieTab
-                peaTx={peaTx ?? []}        ctTx={ctTx ?? []}
-                setPeaTx={setPeaTx}        setCtTx={setCtTx}
-                priceCache={priceCache}    setPriceCache={setPriceCache}
-              />
+          {dbStatus === null
+            ? (
+              <div style={{ display: "flex", justifyContent: "center", alignItems: "center", paddingTop: 80, color: C.muted, fontFamily: "monospace", fontSize: 13, gap: 10 }}>
+                <span style={{ animation: "spin 1s linear infinite", display: "inline-block" }}>↻</span>
+                Chargement du portefeuille…
+              </div>
+            )
+            : tab === "dashboard"
+              ? <DashboardTab pea={peaPositions} ct={ctPositions} />
+              : <SaisieTab
+                  peaTx={peaTx ?? []}        ctTx={ctTx ?? []}
+                  setPeaTx={setPeaTx}        setCtTx={setCtTx}
+                  priceCache={priceCache}    setPriceCache={setPriceCache}
+                />
           }
         </div>
       </div>

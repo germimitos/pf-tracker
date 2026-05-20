@@ -71,17 +71,11 @@ export async function fetchFxRate(fromCurrency) {
   return 1 / rate;
 }
 
-export async function fetchQuote(ticker) {
-  const chartPath  = `/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`;
-  const searchPath = `/v1/finance/search?q=${encodeURIComponent(ticker)}&quotesCount=1&newsCount=0`;
-
-  const [chartJson, searchJson] = await Promise.all([
-    fetchViaProxy(chartPath),
-    fetchViaProxy(searchPath).catch(() => null),
-  ]);
-
-  const result = parseChart(chartJson, ticker);
-  result.secteur = parseSector(searchJson, ticker);
+async function resolveAndFetch(symbol, searchJson) {
+  const chartPath = `/v8/finance/chart/${encodeURIComponent(symbol)}?interval=1d&range=1d`;
+  const chartJson = await fetchViaProxy(chartPath);
+  const result    = parseChart(chartJson, symbol);
+  result.secteur  = parseSector(searchJson, symbol);
 
   if (result.devise === "EUR") {
     result.prixActuelEUR = result.prixActuel;
@@ -93,7 +87,36 @@ export async function fetchQuote(ticker) {
       result.prixActuelEUR = result.prixActuel;
     }
   }
-
-  console.info(`[yf] ${ticker} → ${result.nom} | ${result.prixActuel} ${result.devise} (${result.prixActuelEUR?.toFixed(2)} €) | secteur: ${result.secteur || "—"}`);
   return result;
+}
+
+export async function fetchQuote(ticker) {
+  const searchPath = `/v1/finance/search?q=${encodeURIComponent(ticker)}&quotesCount=5&newsCount=0`;
+
+  // Appels en parallèle — chart peut échouer, search est optionnel
+  const [chartJson, searchJson] = await Promise.all([
+    fetchViaProxy(`/v8/finance/chart/${encodeURIComponent(ticker)}?interval=1d&range=1d`).catch(() => null),
+    fetchViaProxy(searchPath).catch(() => null),
+  ]);
+
+  // Ticker exact trouvé
+  if (chartJson?.chart?.result?.[0]?.meta) {
+    const result = await resolveAndFetch(ticker, searchJson);
+    console.info(`[yf] ${ticker} → ${result.nom} | ${result.prixActuel} ${result.devise} (${result.prixActuelEUR?.toFixed(2)} €)`);
+    return result;
+  }
+
+  // Fallback : meilleur résultat de la recherche (ex: HMI → RMS.PA)
+  const quotes    = searchJson?.quotes ?? [];
+  const bestMatch = quotes.find((q) => q.symbol && q.quoteType === "EQUITY") ?? quotes[0];
+  const symbol    = bestMatch?.symbol;
+
+  if (symbol && symbol.toUpperCase() !== ticker.toUpperCase()) {
+    console.info(`[yf] "${ticker}" introuvable → fallback "${symbol}"`);
+    const result = await resolveAndFetch(symbol, searchJson);
+    console.info(`[yf] ${symbol} → ${result.nom} | ${result.prixActuel} ${result.devise} (${result.prixActuelEUR?.toFixed(2)} €)`);
+    return result;
+  }
+
+  throw new Error(`Ticker "${ticker}" introuvable — pour Euronext Paris essayez avec .PA (ex: RMS.PA)`);
 }
