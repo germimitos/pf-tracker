@@ -52,10 +52,26 @@ export function DashboardTab({ pea, ct }) {
   const peaPct   = peaRev   > 0 ? perf(peaVal,   peaRev)   : 0;
   const ctPct    = ctRev    > 0 ? perf(ctVal,    ctRev)     : 0;
 
-  const allPos = [
+  const rawPos = [
     ...pea.map((x) => ({ ...x, compte: ACCOUNTS.PEA })),
     ...ct.map((x)  => ({ ...x, compte: ACCOUNTS.CT  })),
   ];
+
+  // Fusionner les lignes de même société dans le même compte (tickers différents, même actif)
+  const mergeMap = new Map();
+  for (const p of rawPos) {
+    const key = `${p.compte}|${(p.nom || p.ticker || "").toLowerCase().trim()}`;
+    if (!mergeMap.has(key)) {
+      mergeMap.set(key, { ...p, prixRevient: parseFloat(p.prixRevient) || 0, valeurActuelle: parseFloat(p.valeurActuelle) || 0, nbActions: parseFloat(p.nbActions) || 0 });
+    } else {
+      const m = mergeMap.get(key);
+      m.valeurActuelle += parseFloat(p.valeurActuelle) || 0;
+      m.prixRevient    += parseFloat(p.prixRevient)    || 0;
+      m.nbActions      += parseFloat(p.nbActions)      || 0;
+      m.prixAchat       = m.nbActions > 0 ? m.prixRevient / m.nbActions : 0;
+    }
+  }
+  const allPos = [...mergeMap.values()];
 
   const bySector = {};
   allPos.forEach((p) => {
@@ -167,7 +183,7 @@ export function DashboardTab({ pea, ct }) {
               const pl  = val - rev;
               const pp  = rev > 0 ? perf(val, rev) : 0;
               return (
-                <tr key={`${p.compte}-${p.nom}`} style={{ borderBottom: `1px solid ${C.border}` }}>
+                <tr key={`${p.compte}-${(p.nom || p.ticker || "").toLowerCase().trim()}`} style={{ borderBottom: `1px solid ${C.border}` }}>
                   <td style={{ padding: "10px 10px", color: C.text, fontWeight: 600 }}>{p.nom}</td>
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{

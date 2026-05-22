@@ -1,7 +1,7 @@
 import { useState, useRef } from "react";
 import { useTheme } from "../context/ThemeContext";
 import { fetchQuote } from "../stockApi";
-import { fmt, pct, perf, derivePositions } from "../utils";
+import { fmt, pct, perf } from "../utils";
 import { ACCOUNTS, TX_TYPES } from "../constants";
 
 /* ── helpers de style ───────────────────────────────────────── */
@@ -374,141 +374,6 @@ function AddForm({
             {isEditing ? "✓ Mettre à jour" : `+ ${isVente ? "Vente" : "Achat"}`}
           </button>
         </div>
-      </div>
-    </div>
-  );
-}
-
-/* ── Détail des positions (vue agrégée) ──────────────────────── */
-const POS_COLS = [
-  { key: "nom",     label: "Actif",         align: "left"  },
-  { key: "compte",  label: "Compte",        align: "left"  },
-  { key: "qte",     label: "Qté",           align: "right" },
-  { key: "pa",      label: "Prix moy./act.", align: "right" },
-  { key: "valeur",  label: "Valeur act.",   align: "right" },
-  { key: "revient", label: "Investi",       align: "right" },
-  { key: "pl",      label: "P&L",           align: "right" },
-  { key: "pct",     label: "%",             align: "right" },
-];
-
-function posSortVal(p, key) {
-  switch (key) {
-    case "nom":     return (p.nom || p.ticker || "").toLowerCase();
-    case "compte":  return p.compte;
-    case "qte":     return p.nbActions || 0;
-    case "pa":      return p.prixAchat || 0;
-    case "valeur":  return p.valeurActuelle || 0;
-    case "revient": return p.prixRevient || 0;
-    case "pl":      return (p.valeurActuelle || 0) - (p.prixRevient || 0);
-    case "pct": {
-      const v = p.valeurActuelle || 0, r = p.prixRevient || 0;
-      return r > 0 ? perf(v, r) : 0;
-    }
-    default: return 0;
-  }
-}
-
-function PositionsTable({ peaTx, ctTx, priceCache }) {
-  const C = useTheme();
-  const [sort, setSort] = useState({ key: "valeur", dir: -1 });
-
-  const peaPos = derivePositions(peaTx, priceCache).map((p) => ({ ...p, compte: ACCOUNTS.PEA }));
-  const ctPos  = derivePositions(ctTx,  priceCache).map((p) => ({ ...p, compte: ACCOUNTS.CT  }));
-  const allPos = [...peaPos, ...ctPos];
-
-  if (allPos.length === 0) return null;
-
-  const toggleSort = (key) =>
-    setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }));
-
-  const sorted = [...allPos].sort((a, b) => {
-    const va = posSortVal(a, sort.key);
-    const vb = posSortVal(b, sort.key);
-    return va < vb ? sort.dir : va > vb ? -sort.dir : 0;
-  });
-
-  const thBase = {
-    padding:       "8px 10px",
-    fontSize:      11,
-    textTransform: "uppercase",
-    letterSpacing: 1,
-    fontWeight:    500,
-    borderBottom:  `1px solid ${C.border}`,
-    whiteSpace:    "nowrap",
-    cursor:        "pointer",
-    userSelect:    "none",
-  };
-
-  const SortIcon = ({ colKey }) => (
-    <span style={{ marginLeft: 4, opacity: sort.key === colKey ? 1 : 0.25 }}>
-      {sort.key === colKey && sort.dir === 1 ? "▲" : "▼"}
-    </span>
-  );
-
-  return (
-    <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20, marginBottom: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent }} />
-        <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>DÉTAIL DES POSITIONS</span>
-        <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{allPos.length} ligne{allPos.length > 1 ? "s" : ""}</span>
-      </div>
-      <div style={{ overflowX: "auto" }}>
-        <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
-          <thead>
-            <tr>
-              {POS_COLS.map((col) => (
-                <th
-                  key={col.key}
-                  onClick={() => toggleSort(col.key)}
-                  style={{ ...thBase, textAlign: col.align, color: sort.key === col.key ? C.text : C.muted }}
-                >
-                  {col.label}<SortIcon colKey={col.key} />
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((p) => {
-              const val = p.valeurActuelle || 0;
-              const rev = p.prixRevient    || 0;
-              const pl  = val - rev;
-              const pp  = rev > 0 ? perf(val, rev) : 0;
-              return (
-                <tr key={`${p.compte}-${p.ticker}`} style={{ borderBottom: `1px solid ${C.border}` }}>
-                  <td style={{ padding: "10px 10px" }}>
-                    <div style={{ fontWeight: 600, color: C.text }}>{p.nom || p.ticker}</div>
-                    {p.ticker && <div style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>{p.ticker}</div>}
-                  </td>
-                  <td style={{ padding: "10px 10px" }}>
-                    <span style={{
-                      background:   p.compte === ACCOUNTS.PEA ? "#14532d" : "#1e3a5f",
-                      color:        p.compte === ACCOUNTS.PEA ? "#4ade80" : "#60a5fa",
-                      borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
-                    }}>{p.compte}</span>
-                  </td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text }}>
-                    {(p.nbActions % 1 === 0 ? p.nbActions : p.nbActions.toFixed(3))}
-                  </td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
-                    {p.prixAchat > 0 ? fmt(p.prixAchat) : "—"}
-                  </td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.text, fontWeight: 600 }}>
-                    {val > 0 ? fmt(val) : "—"}
-                  </td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
-                    {fmt(rev)}
-                  </td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", fontWeight: 700, color: pl >= 0 ? C.plus : C.moins }}>
-                    {fmt(pl)}
-                  </td>
-                  <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: pp >= 0 ? C.plus : C.moins }}>
-                    {pct(pp)}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
       </div>
     </div>
   );
@@ -986,8 +851,6 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         errors={ctErrors} setErrors={setCtErrors}
         setPriceCache={setPriceCache}
       />
-
-      <PositionsTable peaTx={peaTx} ctTx={ctTx} priceCache={priceCache} />
 
       <TransactionLog
         peaTx={peaTx} ctTx={ctTx}
