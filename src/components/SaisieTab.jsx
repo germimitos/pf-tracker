@@ -566,7 +566,7 @@ function TransactionLog({
                     background:   isEdit ? `${compte === ACCOUNTS.PEA ? "#4ade8011" : "#60a5fa11"}` : "transparent",
                   }}
                 >
-                  <td style={{ padding: "10px 10px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>{tx.date}</td>
+                  <td style={{ padding: "10px 10px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>{tx.date ? tx.date.split("-").reverse().join("/") : ""}</td>
 
                   <td style={{ padding: "10px 10px" }}>
                     <span style={{ background: isVente ? "#3f1f1f" : "#14532d", color: typeColor, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{tx.type}</span>
