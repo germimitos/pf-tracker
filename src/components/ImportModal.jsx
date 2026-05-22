@@ -19,10 +19,12 @@ export function ImportModal({ peaTx, ctTx, setPeaTx, setCtTx, onClose }) {
   const C = useTheme();
   const fileRef = useRef(null);
 
-  const [step,     setStep]     = useState('idle'); // idle | parsing | preview | done
-  const [error,    setError]    = useState('');
-  const [rows,     setRows]     = useState([]);      // { tx, compte, isDup, selected, ticker }
-  const [filter,   setFilter]   = useState('all');   // all | new | dup
+  const [step,       setStep]     = useState('idle'); // idle | parsing | preview | done
+  const [error,      setError]    = useState('');
+  const [rows,       setRows]     = useState([]);      // { tx, compte, isDup, selected, ticker }
+  const [filter,     setFilter]   = useState('all');   // all | new | dup
+  const [bulkFrom,   setBulkFrom] = useState('');
+  const [bulkTo,     setBulkTo]   = useState('');
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -62,6 +64,19 @@ export function ImportModal({ peaTx, ctTx, setPeaTx, setCtTx, onClose }) {
       const mapped = mapName(val) ?? {};
       return { ...r, ticker: val, tx: { ...r.tx, ticker: val, nom: mapped.nom || r.tx.nom, secteur: mapped.secteur || r.tx.secteur } };
     }));
+
+  const bulkReplace = () => {
+    const from = bulkFrom.trim().toUpperCase();
+    const to   = bulkTo.trim().toUpperCase();
+    if (!from || !to) return;
+    const mapped = mapName(to);
+    setRows(prev => prev.map(r => {
+      if (r.ticker.toUpperCase() !== from) return r;
+      return { ...r, ticker: to, tx: { ...r.tx, ticker: to, nom: mapped.nom || r.tx.nom, secteur: mapped.secteur || r.tx.secteur } };
+    }));
+    setBulkFrom('');
+    setBulkTo('');
+  };
 
   const doImport = () => {
     const toImport = rows.filter(r => r.selected);
@@ -183,6 +198,39 @@ export function ImportModal({ peaTx, ctTx, setPeaTx, setCtTx, onClose }) {
               <button onClick={() => toggleAll(true)}  style={outlineBtn(C.muted, false)}>Tout cocher</button>
               <button onClick={() => toggleAll(false)} style={outlineBtn(C.muted, false)}>Tout décocher</button>
               <button onClick={selectNew}              style={outlineBtn(C.accent, false)}>Nouvelles seules</button>
+            </div>
+
+            {/* Remplacement en masse */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, flexWrap: 'wrap' }}>
+              <span style={{ fontSize: 11, color: C.muted, fontFamily: 'monospace', whiteSpace: 'nowrap' }}>Remplacer en masse :</span>
+              <input
+                value={bulkFrom}
+                onChange={e => setBulkFrom(e.target.value.toUpperCase())}
+                placeholder="Ancien ticker"
+                onKeyDown={e => e.key === 'Enter' && bulkReplace()}
+                style={{
+                  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6,
+                  color: C.text, fontFamily: 'monospace', fontSize: 12,
+                  padding: '4px 8px', width: 110, outline: 'none',
+                }}
+              />
+              <span style={{ color: C.muted, fontSize: 13 }}>→</span>
+              <input
+                value={bulkTo}
+                onChange={e => setBulkTo(e.target.value.toUpperCase())}
+                placeholder="Nouveau ticker"
+                onKeyDown={e => e.key === 'Enter' && bulkReplace()}
+                style={{
+                  background: C.bg, border: `1px solid ${C.border}`, borderRadius: 6,
+                  color: C.text, fontFamily: 'monospace', fontSize: 12,
+                  padding: '4px 8px', width: 110, outline: 'none',
+                }}
+              />
+              <button
+                onClick={bulkReplace}
+                disabled={!bulkFrom.trim() || !bulkTo.trim()}
+                style={outlineBtn(C.accent, !bulkFrom.trim() || !bulkTo.trim())}
+              >Appliquer</button>
             </div>
 
             {/* Table */}
