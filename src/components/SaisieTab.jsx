@@ -380,6 +380,37 @@ function AddForm({
 }
 
 /* ── Journal de transactions ─────────────────────────────────── */
+const TX_COLS = [
+  { key: "date",       label: "Date",              align: "left"  },
+  { key: "type",       label: "Type",              align: "left"  },
+  { key: "nom",        label: "Actif",             align: "left"  },
+  { key: "qte",        label: "Qté",               align: "right" },
+  { key: "prixAchat",  label: "Prix achat/action", align: "right" },
+  { key: "prixActuel", label: "Prix actuel/action",align: "right" },
+  { key: "frais",      label: "Frais",             align: "right" },
+  { key: "pl",         label: "P&L",               align: "right" },
+  { key: "compte",     label: "Compte",            align: "left"  },
+];
+
+function txSortVal({ tx, compte }, key, priceCache) {
+  const qte    = tx.qte ?? tx.nbActions ?? 0;
+  const pa     = tx.prixAchat ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
+  const cached = priceCache?.[tx.ticker?.toUpperCase()];
+  const pcEUR  = cached?.prixActuelEUR ?? tx.prixActuel ?? 0;
+  switch (key) {
+    case "date":       return tx.date ?? "";
+    case "type":       return tx.type ?? "";
+    case "nom":        return (tx.nom || tx.ticker || "").toLowerCase();
+    case "qte":        return qte;
+    case "prixAchat":  return pa;
+    case "prixActuel": return pcEUR;
+    case "frais":      return tx.frais || 0;
+    case "pl":         return qte * pcEUR - (qte * pa + (tx.frais || 0));
+    case "compte":     return compte;
+    default:           return 0;
+  }
+}
+
 function TransactionLog({
   peaTx, ctTx,
   editPeaId, editCtId,
@@ -390,6 +421,9 @@ function TransactionLog({
   const C = useTheme();
   const [loadingIds,      setLoadingIds]      = useState(new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [sort,     setSort]     = useState({ key: "date", dir: -1 });
+  const [page,     setPage]     = useState(0);
+  const [pageSize, setPageSize] = useState(10);
 
   const setRowLoading = (id, v) =>
     setLoadingIds((prev) => { const s = new Set(prev); v ? s.add(id) : s.delete(id); return s; });
@@ -411,13 +445,26 @@ function TransactionLog({
   const allTx = [
     ...peaTx.map((tx) => ({ tx, compte: ACCOUNTS.PEA })),
     ...ctTx.map((tx)  => ({ tx, compte: ACCOUNTS.CT  })),
-  ].sort((a, b) => b.tx.date.localeCompare(a.tx.date));
+  ];
 
   if (allTx.length === 0) return null;
 
-  const thStyle = {
-    color:         C.muted,
-    textAlign:     "left",
+  const sorted = [...allTx].sort((a, b) => {
+    const va = txSortVal(a, sort.key, priceCache);
+    const vb = txSortVal(b, sort.key, priceCache);
+    return va < vb ? sort.dir : va > vb ? -sort.dir : 0;
+  });
+
+  const totalPages = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const safePage   = Math.min(page, totalPages - 1);
+  const paginated  = sorted.slice(safePage * pageSize, (safePage + 1) * pageSize);
+
+  const toggleSort = (key) => {
+    setSort((s) => ({ key, dir: s.key === key ? -s.dir : -1 }));
+    setPage(0);
+  };
+
+  const thBase = {
     padding:       "8px 10px",
     fontSize:      11,
     textTransform: "uppercase",
@@ -425,38 +472,74 @@ function TransactionLog({
     fontWeight:    500,
     borderBottom:  `1px solid ${C.border}`,
     whiteSpace:    "nowrap",
+    cursor:        "pointer",
+    userSelect:    "none",
   };
+
+  const SortIcon = ({ colKey }) => (
+    <span style={{ marginLeft: 4, opacity: sort.key === colKey ? 1 : 0.25 }}>
+      {sort.key === colKey && sort.dir === 1 ? "▲" : "▼"}
+    </span>
+  );
 
   return (
     <div style={{ background: C.card, border: `1px solid ${C.border}`, borderRadius: 12, padding: 20 }}>
-      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 16 }}>
-        <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent }} />
-        <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>
-          JOURNAL DES TRANSACTIONS
-        </span>
-        <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>
-          {allTx.length} opération{allTx.length > 1 ? "s" : ""}
-        </span>
+      {/* En-tête */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 8, marginBottom: 16 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{ width: 10, height: 10, borderRadius: "50%", background: C.accent }} />
+          <span style={{ color: C.text, fontWeight: 700, fontSize: 14, letterSpacing: 1 }}>
+            JOURNAL DES TRANSACTIONS
+          </span>
+          <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>
+            {allTx.length} opération{allTx.length > 1 ? "s" : ""}
+          </span>
+        </div>
+        {/* Sélecteur lignes par page */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>Lignes&nbsp;par&nbsp;page&nbsp;:</span>
+          {[10, 50, 100].map((n) => (
+            <button
+              key={n}
+              onClick={() => { setPageSize(n); setPage(0); }}
+              style={{
+                background:   pageSize === n ? C.accent : "none",
+                border:       `1px solid ${pageSize === n ? C.accent : C.border}`,
+                borderRadius: 6,
+                color:        pageSize === n ? "#0a0f1e" : C.muted,
+                padding:      "3px 10px",
+                cursor:       "pointer",
+                fontSize:     11,
+                fontFamily:   "monospace",
+                fontWeight:   pageSize === n ? 700 : 400,
+              }}
+            >{n}</button>
+          ))}
+        </div>
       </div>
 
       <div style={{ overflowX: "auto" }}>
         <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 13 }}>
           <thead>
             <tr>
-              <th style={thStyle}>Date</th>
-              <th style={thStyle}>Type</th>
-              <th style={thStyle}>Actif</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Qté</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Prix achat/action</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Prix actuel/action</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>Frais</th>
-              <th style={{ ...thStyle, textAlign: "right" }}>P&L</th>
-              <th style={thStyle}>Compte</th>
-              <th style={{ ...thStyle, textAlign: "center" }} />
+              {TX_COLS.map((col) => (
+                <th
+                  key={col.key}
+                  onClick={() => toggleSort(col.key)}
+                  style={{
+                    ...thBase,
+                    textAlign: col.align,
+                    color: sort.key === col.key ? C.text : C.muted,
+                  }}
+                >
+                  {col.label}<SortIcon colKey={col.key} />
+                </th>
+              ))}
+              <th style={{ ...thBase, cursor: "default", borderBottom: `1px solid ${C.border}` }} />
             </tr>
           </thead>
           <tbody>
-            {allTx.map(({ tx, compte }) => {
+            {paginated.map(({ tx, compte }) => {
               const isEdit     = (compte === ACCOUNTS.PEA && editPeaId === tx.id) ||
                                  (compte === ACCOUNTS.CT  && editCtId  === tx.id);
               const isLoading  = loadingIds.has(tx.id);
@@ -464,8 +547,7 @@ function TransactionLog({
               const typeColor  = isVente ? "#f87171" : "#4ade80";
               const confirming = confirmDeleteId === tx.id;
 
-              // Rétrocompat : plusieurs formats possibles
-              const qte       = tx.qte      ?? tx.nbActions ?? 0;
+              const qte       = tx.qte ?? tx.nbActions ?? 0;
               const pa        = tx.prixAchat ?? tx.prixUnitaireEUR ?? tx.prixUnitaire ?? 0;
               const cached    = priceCache?.[tx.ticker?.toUpperCase()];
               const pcEUR     = tx.prixActuel ?? cached?.prixActuelEUR ?? 0;
@@ -484,16 +566,10 @@ function TransactionLog({
                     background:   isEdit ? `${compte === ACCOUNTS.PEA ? "#4ade8011" : "#60a5fa11"}` : "transparent",
                   }}
                 >
-                  <td style={{ padding: "10px 10px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>
-                    {tx.date}
-                  </td>
+                  <td style={{ padding: "10px 10px", color: C.muted, fontFamily: "monospace", fontSize: 12 }}>{tx.date}</td>
 
                   <td style={{ padding: "10px 10px" }}>
-                    <span style={{
-                      background:   isVente ? "#3f1f1f" : "#14532d",
-                      color:        typeColor,
-                      borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
-                    }}>{tx.type}</span>
+                    <span style={{ background: isVente ? "#3f1f1f" : "#14532d", color: typeColor, borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{tx.type}</span>
                   </td>
 
                   <td style={{ padding: "10px 10px" }}>
@@ -505,94 +581,60 @@ function TransactionLog({
                     {qte % 1 === 0 ? qte : qte.toFixed(3)}
                   </td>
 
-                  {/* Prix achat / action */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
                     {pa > 0 ? fmt(pa) : "—"}
                   </td>
 
-                  {/* Prix actuel / action (EUR + devise native) */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace" }}>
                     {cached?.prixActuelEUR != null ? (
                       <>
                         <div style={{ color: C.text, fontWeight: 600 }}>{fmt(cached.prixActuelEUR)}</div>
-                        {showNat && pcNative > 0 && (
-                          <div style={{ fontSize: 10, color: C.muted }}>
-                            {pcNative.toFixed(2)} {tx.devise}
-                          </div>
-                        )}
+                        {showNat && pcNative > 0 && <div style={{ fontSize: 10, color: C.muted }}>{pcNative.toFixed(2)} {tx.devise}</div>}
                       </>
                     ) : pcEUR > 0 ? (
                       <>
                         <div style={{ color: C.muted }}>{fmt(pcEUR)}</div>
-                        {showNat && pcNative > 0 && (
-                          <div style={{ fontSize: 10, color: C.muted }}>
-                            {pcNative.toFixed(2)} {tx.devise}
-                          </div>
-                        )}
+                        {showNat && pcNative > 0 && <div style={{ fontSize: 10, color: C.muted }}>{pcNative.toFixed(2)} {tx.devise}</div>}
                       </>
                     ) : "—"}
                   </td>
 
-                  {/* Frais */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace", color: C.muted }}>
                     {tx.frais > 0 ? fmt(tx.frais) : "—"}
                   </td>
 
-                  {/* P&L */}
                   <td style={{ padding: "10px 10px", textAlign: "right", fontFamily: "monospace" }}>
                     {investi > 0 && valActuel > 0 ? (
                       <>
                         <div style={{ fontWeight: 700, color: pl >= 0 ? C.plus : C.moins }}>{fmt(pl)}</div>
-                        <div style={{ fontSize: 10, color: pl >= 0 ? C.plus : C.moins }}>
-                          {pl >= 0 ? "+" : ""}{plPct.toFixed(1)}%
-                        </div>
+                        <div style={{ fontSize: 10, color: pl >= 0 ? C.plus : C.moins }}>{pl >= 0 ? "+" : ""}{plPct.toFixed(1)}%</div>
                       </>
                     ) : "—"}
                   </td>
 
-                  {/* Compte */}
                   <td style={{ padding: "10px 10px" }}>
-                    <span style={{
-                      background:   compte === ACCOUNTS.PEA ? "#14532d" : "#1e3a5f",
-                      color:        compte === ACCOUNTS.PEA ? "#4ade80"  : "#60a5fa",
-                      borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700,
-                    }}>{compte}</span>
+                    <span style={{ background: compte === ACCOUNTS.PEA ? "#14532d" : "#1e3a5f", color: compte === ACCOUNTS.PEA ? "#4ade80" : "#60a5fa", borderRadius: 6, padding: "2px 8px", fontSize: 11, fontWeight: 700 }}>{compte}</span>
                   </td>
 
-                  {/* Actions */}
                   <td style={{ padding: "10px 10px", textAlign: "right", whiteSpace: "nowrap" }}>
                     {confirming ? (
                       <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
                         <span style={{ fontSize: 11, color: C.moins, fontFamily: "monospace" }}>Supprimer ?</span>
+                        <button onClick={() => setConfirmDeleteId(null)} style={{ ...outlineBtn(C.muted), padding: "4px 10px", fontSize: 11 }}>Annuler</button>
                         <button
-                          onClick={() => setConfirmDeleteId(null)}
-                          style={{ ...outlineBtn(C.muted), padding: "4px 10px", fontSize: 11 }}
-                        >Annuler</button>
-                        <button
-                          onClick={() => {
-                            if (compte === ACCOUNTS.PEA) onDeletePea(tx.id);
-                            else                          onDeleteCt(tx.id);
-                            setConfirmDeleteId(null);
-                          }}
+                          onClick={() => { (compte === ACCOUNTS.PEA ? onDeletePea : onDeleteCt)(tx.id); setConfirmDeleteId(null); }}
                           style={{ ...btnStyle(C.moins), padding: "4px 10px", fontSize: 11 }}
                         >Supprimer</button>
                       </span>
                     ) : (
                       <>
-                        <button
-                          onClick={() => refresh(tx)}
-                          disabled={isLoading || !tx.ticker?.trim()}
-                          title="Rafraîchir le prix actuel"
+                        <button onClick={() => refresh(tx)} disabled={isLoading || !tx.ticker?.trim()} title="Rafraîchir"
                           style={{ background: "none", border: "none", color: isLoading ? C.muted : C.accent, cursor: tx.ticker?.trim() && !isLoading ? "pointer" : "default", fontSize: 15, marginRight: 4 }}
                         >{isLoading ? "…" : "↻"}</button>
-                        <button
-                          onClick={() => compte === ACCOUNTS.PEA ? onEditPea(tx.id) : onEditCt(tx.id)}
-                          title="Modifier"
+                        <button onClick={() => (compte === ACCOUNTS.PEA ? onEditPea : onEditCt)(tx.id)} title="Modifier"
                           style={{ background: "none", border: "none", color: isEdit ? C.accent : C.muted, cursor: "pointer", fontSize: 14, marginRight: 4 }}
                         >✏</button>
-                        <button
-                          onClick={() => setConfirmDeleteId(tx.id)}
-                          title="Supprimer"
+                        <button onClick={() => setConfirmDeleteId(tx.id)} title="Supprimer"
                           style={{ background: "none", border: "none", color: "#f87171", cursor: "pointer", fontSize: 15 }}
                         >✕</button>
                       </>
@@ -604,6 +646,30 @@ function TransactionLog({
           </tbody>
         </table>
       </div>
+
+      {/* Pagination */}
+      {totalPages > 1 && (
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginTop: 16 }}>
+          <button
+            onClick={() => setPage((p) => Math.max(0, p - 1))}
+            disabled={safePage === 0}
+            style={{ ...outlineBtn(C.muted, safePage === 0), padding: "5px 14px", fontSize: 12 }}
+          >← Précédent</button>
+
+          <span style={{ fontSize: 12, fontFamily: "monospace", color: C.muted }}>
+            Page <span style={{ color: C.text, fontWeight: 700 }}>{safePage + 1}</span> / {totalPages}
+            <span style={{ marginLeft: 10, opacity: 0.6 }}>
+              ({safePage * pageSize + 1}–{Math.min((safePage + 1) * pageSize, sorted.length)} sur {sorted.length})
+            </span>
+          </span>
+
+          <button
+            onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+            disabled={safePage === totalPages - 1}
+            style={{ ...outlineBtn(C.muted, safePage === totalPages - 1), padding: "5px 14px", fontSize: 12 }}
+          >Suivant →</button>
+        </div>
+      )}
     </div>
   );
 }
