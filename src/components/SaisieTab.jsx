@@ -417,11 +417,13 @@ function TransactionLog({
   editPeaId, editCtId,
   onEditPea, onEditCt,
   onDeletePea, onDeleteCt,
+  onClearAll,
   priceCache, setPriceCache,
 }) {
   const C = useTheme();
   const [loadingIds,      setLoadingIds]      = useState(new Set());
   const [confirmDeleteId, setConfirmDeleteId] = useState(null);
+  const [confirmClearAll, setConfirmClearAll] = useState(false);
   const [sort,     setSort]     = useState({ key: "date", dir: -1 });
   const [page,     setPage]     = useState(0);
   const [pageSize, setPageSize] = useState(10);
@@ -496,7 +498,7 @@ function TransactionLog({
             {allTx.length} opération{allTx.length > 1 ? "s" : ""}
           </span>
         </div>
-        {/* Sélecteur lignes par page */}
+        {/* Sélecteur lignes par page + Tout supprimer */}
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{ fontSize: 11, color: C.muted, fontFamily: "monospace" }}>Lignes&nbsp;par&nbsp;page&nbsp;:</span>
           {[10, 50, 100].map((n) => (
@@ -516,6 +518,27 @@ function TransactionLog({
               }}
             >{n}</button>
           ))}
+          <div style={{ width: 1, height: 18, background: C.border, margin: "0 4px" }} />
+          {confirmClearAll ? (
+            <span style={{ display: "inline-flex", gap: 6, alignItems: "center" }}>
+              <span style={{ fontSize: 11, color: C.moins, fontFamily: "monospace" }}>
+                Supprimer les {allTx.length} transactions&nbsp;?
+              </span>
+              <button
+                onClick={() => setConfirmClearAll(false)}
+                style={{ ...outlineBtn(C.muted), padding: "3px 10px", fontSize: 11 }}
+              >Annuler</button>
+              <button
+                onClick={() => { onClearAll(); setConfirmClearAll(false); }}
+                style={{ ...btnStyle(C.moins), padding: "3px 10px", fontSize: 11 }}
+              >Supprimer tout</button>
+            </span>
+          ) : (
+            <button
+              onClick={() => setConfirmClearAll(true)}
+              style={{ ...outlineBtn(C.moins), padding: "3px 10px", fontSize: 11 }}
+            >⊠ Tout supprimer</button>
+          )}
         </div>
       </div>
 
@@ -767,6 +790,13 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
     if (editCtId === id) cancelCt();
   };
 
+  const clearAll = () => {
+    setPeaTx([]);
+    setCtTx([]);
+    cancelPea();
+    cancelCt();
+  };
+
   /* ── Rafraîchir tous les prix ── */
   const refreshAllPrices = async () => {
     setRefreshing(true);
@@ -859,6 +889,7 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         editPeaId={editPeaId} editCtId={editCtId}
         onEditPea={startEditPea} onEditCt={startEditCt}
         onDeletePea={deletePea}  onDeleteCt={deleteCt}
+        onClearAll={clearAll}
         priceCache={priceCache} setPriceCache={setPriceCache}
       />
 
