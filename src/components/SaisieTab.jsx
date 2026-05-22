@@ -3,6 +3,7 @@ import { useTheme } from "../context/ThemeContext";
 import { fetchQuote } from "../stockApi";
 import { fmt, pct, perf } from "../utils";
 import { ACCOUNTS, TX_TYPES } from "../constants";
+import { ImportModal } from "./ImportModal";
 
 /* ── helpers de style ───────────────────────────────────────── */
 const inputStyle = (error, C) => ({
@@ -679,13 +680,14 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
   const C = useTheme();
   const importRef = useRef(null);
 
-  const [formPea,    setFormPea]    = useState(emptyTx);
-  const [formCt,     setFormCt]     = useState(emptyTx);
-  const [editPeaId,  setEditPeaId]  = useState(null);
-  const [editCtId,   setEditCtId]   = useState(null);
-  const [peaErrors,  setPeaErrors]  = useState({});
-  const [ctErrors,   setCtErrors]   = useState({});
-  const [refreshing, setRefreshing] = useState(false);
+  const [formPea,      setFormPea]      = useState(emptyTx);
+  const [formCt,       setFormCt]       = useState(emptyTx);
+  const [editPeaId,    setEditPeaId]    = useState(null);
+  const [editCtId,     setEditCtId]     = useState(null);
+  const [peaErrors,    setPeaErrors]    = useState({});
+  const [ctErrors,     setCtErrors]     = useState({});
+  const [refreshing,   setRefreshing]   = useState(false);
+  const [showImport,   setShowImport]   = useState(false);
 
   /* ── PEA ── */
   const addPea = () => {
@@ -860,11 +862,26 @@ export function SaisieTab({ peaTx, ctTx, setPeaTx, setCtTx, priceCache, setPrice
         priceCache={priceCache} setPriceCache={setPriceCache}
       />
 
-      <div style={{ marginTop: 24, display: "flex", gap: 8, flexWrap: "wrap" }}>
-        <button onClick={handleExport} style={outlineBtn(C.accent)}>Exporter JSON</button>
+      <div style={{ marginTop: 24, display: "flex", gap: 8, flexWrap: "wrap", alignItems: "center" }}>
+        <button
+          onClick={() => setShowImport(true)}
+          style={{ ...outlineBtn(C.accent), fontWeight: 700 }}
+        >
+          ↑ Importer PDF Trade Republic
+        </button>
+        <div style={{ width: 1, height: 24, background: C.border }} />
+        <button onClick={handleExport} style={outlineBtn(C.muted)}>Exporter JSON</button>
         <button onClick={() => importRef.current?.click()} style={outlineBtn(C.muted)}>Importer JSON</button>
         <input ref={importRef} type="file" accept=".json" onChange={handleImport} style={{ display: "none" }} />
       </div>
+
+      {showImport && (
+        <ImportModal
+          peaTx={peaTx} ctTx={ctTx}
+          setPeaTx={setPeaTx} setCtTx={setCtTx}
+          onClose={() => setShowImport(false)}
+        />
+      )}
     </div>
   );
 }
