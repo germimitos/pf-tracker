@@ -38,7 +38,7 @@ export const TICKER_MAP = {
   'S&P 500 EUR (Acc)':            { ticker: 'SXR8.DE',  nom: 'iShares Core S&P 500 UCITS ETF EUR (Acc)',       secteur: 'ETF' },
   'MSCI World Swap PEA EUR (Acc)':{ ticker: 'WPEA.PA',  nom: 'Amundi MSCI World UCITS ETF EUR (Acc)',          secteur: 'ETF' },
   'MSCI Emerging Asia PEA ESG Leaders EUR (Acc)': { ticker: 'PAASI.PA', nom: 'ETF MSCI Emerging Asia ESG Leaders EUR (Acc)', secteur: 'ETF' },
-  'Core CAC 40 EUR (Acc)':        { ticker: 'VOOP.PA',  nom: 'Amundi Core CAC 40 UCITS ETF EUR (Acc)',         secteur: 'ETF' },
+  'Core CAC 40 EUR (Acc)':        { ticker: 'CACC.PA',  nom: 'Amundi CAC 40 UCITS ETF Acc',                    secteur: 'ETF' },
   // FUNDs — CT
   'Core S&P 500 USD (Acc)':       { ticker: 'CSPX.L',   nom: 'iShares Core S&P 500 UCITS ETF USD (Acc)',      secteur: 'ETF' },
   'Easy S&P 500 EUR Hedged':      { ticker: 'ESEH.PA',  nom: 'BNP Paribas Easy S&P 500 UCITS ETF EUR Hedged', secteur: 'ETF' },
