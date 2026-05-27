@@ -35,10 +35,10 @@ export const TICKER_MAP = {
   'Robinhood Markets (A)':        { ticker: 'HOOD',     nom: 'Robinhood Markets, Inc.',         secteur: 'Financial Services'     },
   'STMicroelectronics (ADR)':     { ticker: 'STM',      nom: 'STMicroelectronics N.V.',         secteur: 'Technology'             },
   // FUNDs — PEA
-  'S&P 500 EUR (Acc)':            { ticker: '500.PA',   nom: 'Amundi ETF S&P 500 UCITS EUR (Acc)',             secteur: 'ETF' },
-  'MSCI World Swap PEA EUR (Acc)':{ ticker: 'CW8.PA',   nom: 'Amundi MSCI World UCITS ETF EUR (Acc)',          secteur: 'ETF' },
+  'S&P 500 EUR (Acc)':            { ticker: 'SXR8',     nom: 'iShares Core S&P 500 UCITS ETF EUR (Acc)',       secteur: 'ETF' },
+  'MSCI World Swap PEA EUR (Acc)':{ ticker: 'WPEA',     nom: 'Amundi MSCI World UCITS ETF EUR (Acc)',          secteur: 'ETF' },
   'MSCI Emerging Asia PEA ESG Leaders EUR (Acc)': { ticker: 'PAASI.PA', nom: 'ETF MSCI Emerging Asia ESG Leaders EUR (Acc)', secteur: 'ETF' },
-  'Core CAC 40 EUR (Acc)':        { ticker: 'C40.PA',   nom: 'Amundi Core CAC 40 UCITS ETF EUR (Acc)',         secteur: 'ETF' },
+  'Core CAC 40 EUR (Acc)':        { ticker: 'VOOP',     nom: 'Vanguard FTSE All-World UCITS ETF EUR (Acc)',    secteur: 'ETF' },
   // FUNDs — CT
   'Core S&P 500 USD (Acc)':       { ticker: 'CSPX.L',   nom: 'iShares Core S&P 500 UCITS ETF USD (Acc)',      secteur: 'ETF' },
 };
