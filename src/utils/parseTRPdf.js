@@ -20,8 +20,38 @@ const toIso = (dmy) => {
   return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
 };
 
+// ── Mapping nom Trade Republic → ticker ─────────────────────────
+export const TICKER_MAP = {
+  // STOCKs
+  'AMD':                          { ticker: 'AMD',      nom: 'Advanced Micro Devices, Inc.',    secteur: 'Technology'             },
+  'Amazon.com':                   { ticker: 'AMZN',     nom: 'Amazon.com, Inc.',                secteur: 'Consumer Cyclical'      },
+  'Coinbase Global (A)':          { ticker: 'COIN',     nom: 'Coinbase Global, Inc.',           secteur: 'Financial Services'     },
+  'Kering':                       { ticker: 'KER.PA',   nom: 'Kering SA',                       secteur: 'Consumer Cyclical'      },
+  'LVMH Moët Hennessy':           { ticker: 'MC.PA',    nom: 'LVMH Moët Hennessy - Louis Vuitton, Société Européenne', secteur: 'Consumer Cyclical' },
+  'Mitsubishi':                   { ticker: '8058.T',   nom: 'Mitsubishi Corporation',          secteur: 'Industrials'            },
+  'Netflix':                      { ticker: 'NFLX',     nom: 'Netflix, Inc.',                   secteur: 'Communication Services' },
+  'PayPal':                       { ticker: 'PYPL',     nom: 'PayPal Holdings, Inc.',           secteur: 'Financial Services'     },
+  'Reply':                        { ticker: 'REY.MI',   nom: 'Reply S.p.A.',                    secteur: 'Technology'             },
+  'Robinhood Markets (A)':        { ticker: 'HOOD',     nom: 'Robinhood Markets, Inc.',         secteur: 'Financial Services'     },
+  'STMicroelectronics (ADR)':     { ticker: 'STM',      nom: 'STMicroelectronics N.V.',         secteur: 'Technology'             },
+  // FUNDs — PEA
+  'S&P 500 EUR (Acc)':            { ticker: 'SXR8',     nom: 'iShares Core S&P 500 UCITS ETF EUR (Acc)',       secteur: 'ETF' },
+  'MSCI World Swap PEA EUR (Acc)':{ ticker: 'WPEA',     nom: 'iShares MSCI World Swap PEA UCITS ETF EUR (Acc)',secteur: 'ETF' },
+  'MSCI Emerging Asia PEA ESG Leaders EUR (Acc)': { ticker: 'PAASI.PA', nom: 'ETF MSCI Emerging Asia ESG Leaders EUR (Acc)', secteur: 'ETF' },
+  'Core CAC 40 EUR (Acc)':        { ticker: 'VOOP',     nom: 'Amundi Core CAC 40 UCITS ETF EUR (Acc)',         secteur: 'ETF' },
+  // FUNDs — CT
+  'Core S&P 500 USD (Acc)':       { ticker: 'CSPX.L',   nom: 'iShares Core S&P 500 UCITS ETF USD (Acc)',      secteur: 'ETF' },
+  'Easy S&P 500 EUR Hedged':      { ticker: 'ESEH.PA',  nom: 'BNP Paribas Easy S&P 500 UCITS ETF EUR Hedged', secteur: 'ETF' },
+};
+
 export function mapName(rawName) {
-  if (!rawName) return { ticker: '', nom: '', secteur: '' };
+  if (!rawName) return { ticker: '?', nom: '', secteur: '' };
+  if (TICKER_MAP[rawName]) return { ...TICKER_MAP[rawName] };
+  const key = Object.keys(TICKER_MAP).find(k =>
+    rawName.toLowerCase().startsWith(k.toLowerCase()) ||
+    k.toLowerCase().startsWith(rawName.toLowerCase())
+  );
+  if (key) return { ...TICKER_MAP[key] };
   const ticker = rawName.replace(/[^A-Z0-9.]/gi, '-').toUpperCase().replace(/-{2,}/g, '-').slice(0, 14);
   return { ticker, nom: rawName, secteur: '' };
 }

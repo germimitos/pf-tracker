@@ -2,7 +2,7 @@ import { useState, useRef } from 'react';
 import { useTheme } from '../context/ThemeContext';
 import { ACCOUNTS, TX_TYPES } from '../constants';
 import { fmt } from '../utils';
-import { parseTradeRepublicPDF, isDuplicate, mapName } from '../utils/parseTRPdf';
+import { parseTradeRepublicPDF, isDuplicate, TICKER_MAP, mapName } from '../utils/parseTRPdf';
 
 const CLASSE_LABELS = { STOCK: '📈 Action', FUND: '🏦 Fonds' };
 const outlineBtn = (color, disabled) => ({
