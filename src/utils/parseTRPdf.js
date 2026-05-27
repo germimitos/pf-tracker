@@ -41,6 +41,7 @@ export const TICKER_MAP = {
   'Core CAC 40 EUR (Acc)':        { ticker: 'VOOP.PA',  nom: 'Amundi Core CAC 40 UCITS ETF EUR (Acc)',         secteur: 'ETF' },
   // FUNDs — CT
   'Core S&P 500 USD (Acc)':       { ticker: 'CSPX.L',   nom: 'iShares Core S&P 500 UCITS ETF USD (Acc)',      secteur: 'ETF' },
+  'Easy S&P 500 EUR Hedged':      { ticker: 'ESEH.PA',  nom: 'BNP Paribas Easy S&P 500 UCITS ETF EUR Hedged', secteur: 'ETF' },
 };
 
 export function mapName(rawName) {
